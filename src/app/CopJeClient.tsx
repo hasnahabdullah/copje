@@ -1,6 +1,6 @@
 'use client';
 
-import { CSSProperties, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Circle,
   Copy,
@@ -247,10 +247,6 @@ export default function CopJeClient() {
 
   const [dateFormat, setDateFormat] = useState<DateFormat>('DD/MM/YYYY');
   const [datePrefix, setDatePrefix] = useState(true);
-
-  const canvasLayoutStyle = {
-    '--canvas-size': `${canvasSize}px`,
-  } as CSSProperties;
 
   const [borderWidth, setBorderWidth] = useState(10);
   const [borderStyle, setBorderStyle] = useState<BorderStyle>('solid');
@@ -1327,7 +1323,7 @@ export default function CopJeClient() {
   }, []);
 
   return (
-    <div className="copje-page" style={canvasLayoutStyle}>
+    <div className="copje-page">
       <main className="copje-shell">
         <section className="copje-hero">
           <p className="copje-kicker">Cop Je! · Online Rubber Stamp Maker</p>
