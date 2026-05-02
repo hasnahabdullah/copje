@@ -5,7 +5,7 @@
   --panel: rgba(6, 15, 31, 0.86);
   --panel-2: rgba(8, 17, 34, 0.68);
   --line: rgba(129, 169, 236, 0.22);
-  --canvas-size: min(560px, calc(100dvw - 1.5rem));
+  --canvas-size: min(560px, calc(100vw - 2rem));
   --canvas-grid-columns: 35;
   --canvas: #ffffff;
   --canvas-ruler: rgba(0, 0, 0, 0.08);
@@ -490,12 +490,13 @@
 
 @media (max-width: 1023px) {
   .copje-page {
-    --canvas-size: min(560px, calc(100dvw - 1.4rem));
+    --canvas-size: min(560px, calc(100vw - 2rem));
   }
 
   .copje-shell {
-    width: 100%;
-    margin: 0;
+    width: calc(100% - 1rem);
+    margin: 0 auto;
+    overflow: hidden;
   }
 
   .copje-page {
