@@ -1,5 +1,5 @@
 [Unit]
-Description=CopJe PM2 process
+Description=COP JE PM2 process
 After=network.target
 
 [Service]

@@ -1,6 +1,6 @@
-# CopJe
+# COP JE
 
-Standalone Next.js app for the CopJe online rubber stamp creator.
+Standalone Next.js app for the COP JE online rubber stamp creator.
 
 ## Getting Started
 
@@ -52,7 +52,7 @@ curl -I https://hana2.ronniefrom.my
 
 ## PM2 startup on reboot (systemd)
 
-Install this service so CopJe restarts automatically after boot:
+Install this service so COP JE restarts automatically after boot:
 
 ```bash
 sudo cp deploy/copje-pm2.service /etc/systemd/system/copje.service

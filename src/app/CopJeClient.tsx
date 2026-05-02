@@ -1323,7 +1323,7 @@ export default function CopJeClient() {
     <div className="copje-page">
       <main className="copje-shell">
         <section className="copje-hero">
-          <p className="copje-kicker">CopJe! · Online Rubber Stamp Maker</p>
+          <p className="copje-kicker">COP JE! · Online Rubber Stamp Maker</p>
           <h1 className="copje-title">Create Rubber Stamps Online</h1>
         </section>
 

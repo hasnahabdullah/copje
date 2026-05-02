@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'CopJe! - Free Online Rubber Stamp Maker',
+  title: 'COP JE! - Free Online Rubber Stamp Maker',
   description:
     'Create custom rubber stamps online for free. Add text, shapes, images, presets, and export PNG/SVG quickly.',
 };
