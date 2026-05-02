@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { CSSProperties, useEffect, useRef, useState } from 'react';
 import {
   Circle,
   Copy,
@@ -8,9 +8,7 @@ import {
   Image as ImageIcon,
   Layers,
   Menu,
-  Minus,
   Palette,
-  Plus,
   RefreshCw,
   Type,
   X,
@@ -226,7 +224,6 @@ export default function CopJeClient() {
   });
 
   const [started, setStarted] = useState(false);
-  const [zoom, setZoom] = useState(1);
   const [guides, setGuides] = useState({ x: false, y: false });
   const [canvasSize] = useState(BASE_CANVAS);
   const [busy, setBusy] = useState(false);
@@ -250,6 +247,10 @@ export default function CopJeClient() {
 
   const [dateFormat, setDateFormat] = useState<DateFormat>('DD/MM/YYYY');
   const [datePrefix, setDatePrefix] = useState(true);
+
+  const canvasLayoutStyle = {
+    '--canvas-size': `${canvasSize}px`,
+  } as CSSProperties;
 
   const [borderWidth, setBorderWidth] = useState(10);
   const [borderStyle, setBorderStyle] = useState<BorderStyle>('solid');
@@ -422,16 +423,22 @@ export default function CopJeClient() {
     historyRef.current = { past: [], future: [] };
     canvas.clear();
     canvas.backgroundColor = 'rgba(0,0,0,0)';
+    const diameter = Math.min(canvas.width, canvas.height);
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const stroke = Math.max(2, borderWidth);
+    const fillPadding = Math.max(6, stroke + 4);
+    const radius = Math.max(56, (diameter / 2) - fillPadding);
     const circle = new fabric.Circle({
       uid: toId(),
       kind: 'shape',
       shapeKind: 'circle',
       fill: 'rgba(0,0,0,0)',
-      left: canvas.width / 2,
-      top: canvas.height / 2,
+      left: centerX,
+      top: centerY,
       originX: 'center',
       originY: 'center',
-      radius: 190,
+      radius,
       stroke: inkColor,
       strokeWidth: borderWidth,
       strokeLineCap: 'round',
@@ -442,20 +449,30 @@ export default function CopJeClient() {
       uid: toId(),
       kind: 'text',
       fill: inkColor,
-      left: canvas.width / 2,
-      top: canvas.height / 2,
+      left: centerX,
+      top: centerY,
       originX: 'center',
       originY: 'center',
       fontFamily: mapFontFamily('Arial'),
-      fontSize: 95,
+      fontSize: Math.max(48, Math.round(radius * 0.44)),
       fontWeight: 'bold',
       fontStyle: 'normal',
+      textAlign: 'center',
       charSpacing: 8,
       opacity: opacity / 100,
     }) as StampObject;
 
+    const maxTextWidth = Math.max(44, radius * 1.75);
+    if (text.width) {
+      text.scaleToWidth(maxTextWidth);
+    }
+
     applyShapeBorder(circle);
     canvas.add(circle, text);
+    canvas.centerObject(circle);
+    canvas.centerObject(text);
+    circle.setCoords();
+    text.setCoords();
     canvas.setActiveObject(text);
     canvas.requestRenderAll();
     saveState();
@@ -889,16 +906,6 @@ export default function CopJeClient() {
     syncActiveObject();
   };
 
-  const setZoomLevel = (next: number) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const center = new fabric.Point(canvas.width / 2, canvas.height / 2);
-    const safe = clamp(next, 0.5, 3);
-    canvas.zoomToPoint(center, safe);
-    setZoom(Number(safe.toFixed(2)));
-    canvas.requestRenderAll();
-  };
-
   const exportPNG = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1320,10 +1327,10 @@ export default function CopJeClient() {
   }, []);
 
   return (
-    <div className="copje-page">
+    <div className="copje-page" style={canvasLayoutStyle}>
       <main className="copje-shell">
         <section className="copje-hero">
-          <p className="copje-kicker">COP JE! · Online Rubber Stamp Maker</p>
+          <p className="copje-kicker">Cop Je! · Online Rubber Stamp Maker</p>
           <h1 className="copje-title">Create Rubber Stamps Online</h1>
         </section>
 
@@ -1671,15 +1678,6 @@ export default function CopJeClient() {
               <div>
                 <p className="copje-tool-kicker">Canvas stage</p>
                 <h2 className="copje-tool-title">Rubber stamp preview</h2>
-              </div>
-              <div className="copje-zoom-row">
-                <button type="button" className="copje-btn" onClick={() => setZoomLevel(zoom - 0.1)}>
-                  <Minus size={13} />
-                </button>
-                <span className="copje-zoom-value">{Math.round(zoom * 100)}%</span>
-                <button type="button" className="copje-btn" onClick={() => setZoomLevel(zoom + 0.1)}>
-                  <Plus size={13} />
-                </button>
               </div>
             </header>
 

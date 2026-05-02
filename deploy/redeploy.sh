@@ -14,4 +14,6 @@ git pull --ff-only origin "$BRANCH"
 npm ci
 npm run build
 
-/usr/bin/env pm2 startOrReload "$PM2_CONFIG"
+# Ensure the process is always recreated from the current repo state.
+/usr/bin/env pm2 delete copje 2>/dev/null || true
+/usr/bin/env pm2 start "$PM2_CONFIG"
