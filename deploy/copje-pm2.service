@@ -1,0 +1,20 @@
+[Unit]
+Description=CopJe PM2 process
+After=network.target
+
+[Service]
+Type=forking
+User=root
+Environment=NODE_ENV=production
+Environment=PM2_HOME=/root/.pm2
+WorkingDirectory=/root/copje
+ExecStart=/usr/bin/env pm2 startOrReload /root/copje/deploy/ecosystem.config.cjs
+ExecReload=/usr/bin/env pm2 reload copje
+ExecStop=/usr/bin/env pm2 stop copje
+ExecStopPost=/usr/bin/env pm2 delete copje
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

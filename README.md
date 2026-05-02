@@ -49,3 +49,37 @@ Verify:
 curl -I http://127.0.0.1:3000
 curl -I https://hana2.ronniefrom.my
 ```
+
+## PM2 startup on reboot (systemd)
+
+Install this service so CopJe restarts automatically after boot:
+
+```bash
+sudo cp deploy/copje-pm2.service /etc/systemd/system/copje.service
+sudo systemctl daemon-reload
+sudo systemctl enable copje
+sudo systemctl start copje
+```
+
+Check status:
+
+```bash
+systemctl status copje
+```
+
+> If your PM2 binary is not in PATH for systemd, edit `deploy/copje-pm2.service` and replace `/usr/bin/env pm2` with your full PM2 path.
+
+## CI-friendly deploy script
+
+Use this on deployment runners or the server to pull, build, and hot-reload:
+
+```bash
+chmod +x deploy/redeploy.sh
+COPJE_BRANCH=main ./deploy/redeploy.sh
+```
+
+What it does:
+- pulls latest code from origin
+- installs dependencies (`npm ci`)
+- builds (`npm run build`)
+- reloads PM2 with `deploy/ecosystem.config.cjs`
