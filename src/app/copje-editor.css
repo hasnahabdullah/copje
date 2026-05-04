@@ -5,7 +5,9 @@
   --panel: rgba(6, 15, 31, 0.86);
   --panel-2: rgba(8, 17, 34, 0.68);
   --line: rgba(129, 169, 236, 0.22);
-  --canvas-size: min(560px, calc(100vw - 2rem));
+  --canvas-size: min(560px, 100%);
+  --canvas-box-width: min(560px, 100%);
+  --canvas-view-width: min(240px, 100%);
   --canvas-grid-columns: 35;
   --canvas: #ffffff;
   --canvas-ruler: rgba(0, 0, 0, 0.08);
@@ -17,7 +19,7 @@
   color: var(--txt);
   min-height: 100vh;
   background: var(--bg);
-  padding: 0.8rem 0 5.3rem;
+  padding: 0.35rem 0 5.3rem;
   position: relative;
   overflow-x: hidden;
 }
@@ -29,7 +31,7 @@
 
 .copje-hero {
   padding: 0;
-  margin-bottom: 0.2rem;
+  margin-bottom: 0;
   background: transparent;
   border: none;
   outline: none;
@@ -53,14 +55,14 @@
 }
 
 .copje-title {
-  margin: 0.4rem 0 0;
+  margin: 0.16rem 0 0;
   font-size: clamp(1.9rem, 5vw, 2.95rem);
   line-height: 1;
   font-family: 'Bebas Neue', Arial, sans-serif;
 }
 
 .copje-subtitle {
-  margin: 0.58rem 0 0;
+  margin: 0.16rem 0 0;
   color: var(--muted);
   font-size: 0.8rem !important;
   line-height: 1.35;
@@ -74,7 +76,7 @@
 }
 
 .copje-hero-chips {
-  margin-top: 0.75rem;
+  margin-top: 0.26rem;
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
@@ -90,7 +92,7 @@
 }
 
 .copje-workspace-grid {
-  margin-top: 1rem;
+  margin-top: 0.2rem;
   display: grid;
   gap: 0.8rem;
   grid-template-columns: 1fr;
@@ -99,8 +101,7 @@
 }
 
 .copje-tool-drawer,
-.copje-layer-panel,
-.copje-canvas-frame {
+.copje-layer-panel {
   border: 1px solid var(--line);
   border-radius: 0.95rem;
   background: var(--panel);
@@ -131,10 +132,6 @@
   pointer-events: auto;
 }
 
-.copje-canvas-frame {
-  order: 1;
-}
-
 .copje-tool-drawer-inner,
 .copje-tool-drawer .copje-toolbar {
   padding-right: 0.15rem;
@@ -144,6 +141,154 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;
+  background: var(--panel);
+}
+
+.copje-tool-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+}
+
+.copje-tool-selector-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.45rem;
+  width: 100%;
+  border-radius: 0.66rem;
+  border: 1px solid rgba(124, 165, 230, 0.28);
+  background: rgba(6, 15, 29, 0.93);
+  color: #d8e6ff;
+  padding: 0.53rem 0.62rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.copje-shape-selector {
+  position: relative;
+  width: auto;
+}
+
+.copje-shape-selector-trigger {
+  width: max-content;
+  min-width: 108px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.copje-shape-selector-popover {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+  width: min(260px, calc(100vw - 2rem));
+  padding: 0.42rem;
+  background: linear-gradient(180deg, #3f4650, #2e353e);
+  border: 1px solid rgba(142, 150, 160, 0.45);
+  border-radius: 0.66rem;
+  backdrop-filter: blur(6px);
+  z-index: 4;
+  box-shadow: 0 16px 35px rgba(0, 0, 0, 0.35);
+}
+
+.copje-shape-selector-popover .copje-shape-option {
+  border: 1px solid transparent;
+  border-radius: 0.46rem;
+  background: #2a3039;
+  color: #f2f5fb;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  display: inline-flex;
+  width: 100%;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.copje-shape-selector-popover .copje-shape-option.is-active {
+  border-color: #b8bfcc;
+  background: #4a5463;
+  color: #ffffff;
+}
+
+.copje-shape-radio {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 999px;
+  border: 1px solid #a7afbf;
+  position: relative;
+  flex: 0 0 auto;
+  background: #1f2530;
+}
+
+.copje-shape-selector-popover .copje-shape-option.is-active .copje-shape-radio::after {
+  content: '';
+  position: absolute;
+  inset: 0.18rem;
+  border-radius: 999px;
+  background: #ecf0ff;
+}
+
+.copje-shape-selector-popover .copje-shape-option:hover,
+.copje-shape-selector-popover .copje-shape-option:focus-visible {
+  border-color: #8b95a5;
+  outline: none;
+  background: #404a59;
+}
+
+.copje-shape-selector-popover .copje-shape-option.is-active:focus-visible {
+  border-color: #d6ddf0;
+}
+
+.copje-tool-selector-btn.is-active {
+  border-color: rgba(129, 203, 255, 0.82);
+  color: #f4f8ff;
+  background: linear-gradient(130deg, rgba(80, 134, 214, 0.34), rgba(60, 107, 164, 0.24));
+}
+
+.copje-tool-index {
+  width: 1.4rem;
+  font-variant-numeric: tabular-nums;
+  color: #8eb6ff;
+}
+
+.copje-main-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-start;
+  width: var(--canvas-box-width);
+  max-width: min(var(--canvas-box-width), 100%);
+  grid-column: 1;
+}
+
+.copje-tool-content {
+  order: 2;
+  width: var(--canvas-box-width);
+  max-width: min(var(--canvas-box-width), 100%);
+}
+
+.copje-canvas-toolbar-strip {
+  order: 0;
+  width: var(--canvas-box-width);
+  max-width: min(var(--canvas-box-width), 100%);
+}
+
+.copje-tool-content .copje-toolbar {
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .copje-tool-kicker {
@@ -209,6 +354,10 @@
   background: #050d1f;
   color: #e8f0ff;
   outline: none;
+}
+
+.copje-file-input {
+  display: none;
 }
 
 .copje-input,
@@ -303,10 +452,13 @@
 .copje-canvas-frame-inner {
   position: relative;
   aspect-ratio: 1 / 1;
-  width: min(var(--canvas-size), 100%);
-  border: 1px solid rgba(121, 158, 220, 0.24);
-  border-radius: 0.8rem;
-  margin: 0.65rem auto 0;
+  width: var(--canvas-view-width);
+  height: var(--canvas-view-width);
+  min-width: var(--canvas-view-width);
+  min-height: var(--canvas-view-width);
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0.25rem 0 0;
   overflow: hidden;
   background:
     linear-gradient(90deg, var(--canvas-grid) 1px, transparent 1px),
@@ -315,9 +467,6 @@
   background-size: calc(100% / var(--canvas-grid-columns)) calc(100% / var(--canvas-grid-columns)),
     calc(100% / var(--canvas-grid-columns)) calc(100% / var(--canvas-grid-columns)),
     100% 100%;
-  box-shadow:
-    inset 0 0 0 1px rgba(123, 170, 255, 0.12),
-    inset 0 0 38px rgba(3, 7, 14, 0.45);
 }
 
 .copje-canvas-frame-inner > .copje-canvas-ruler {
@@ -330,9 +479,20 @@
     calc(100% / var(--canvas-grid-columns)) calc(100% / var(--canvas-grid-columns));
 }
 
+.copje-canvas-toolbar-strip.copje-canvas-toolbar-strip--overlay {
+  position: absolute;
+  top: 0.32rem;
+  left: 0.32rem;
+  z-index: 5;
+  margin: 0;
+  width: auto;
+  gap: 0.25rem;
+  align-items: flex-start;
+}
+
 .copje-canvas {
-  width: min(var(--canvas-size), 100%);
-  height: min(var(--canvas-size), 100%);
+  width: 100%;
+  height: 100%;
   touch-action: none;
   background: transparent;
   display: block;
@@ -367,11 +527,6 @@
   justify-content: space-between;
   align-items: center;
   gap: 0.7rem;
-}
-
-.copje-canvas-shell {
-  display: flex;
-  justify-content: center;
 }
 
 .copje-status {
@@ -439,11 +594,18 @@
 }
 
 .copje-footer {
-  margin-top: 1.1rem;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  margin-top: 0;
   text-align: center;
   color: #8ca5cb;
-  font-size: 0.76rem;
-  padding: 0 0.75rem;
+  font-size: 0.66rem;
+  padding: 0.45rem 0.75rem;
+  background: rgba(5, 13, 31, 0.84);
+  backdrop-filter: blur(4px);
 }
 
 @media (min-width: 1024px) {
@@ -455,6 +617,7 @@
   .copje-tool-drawer {
     grid-column: 1;
     align-self: start;
+    min-height: auto;
     order: initial;
     position: static;
     transform: none;
@@ -478,25 +641,31 @@
     display: none;
   }
 
-  .copje-canvas-frame {
+  .copje-main-column {
     grid-column: 2;
-    align-self: start;
-    order: initial;
-    justify-self: center;
-    max-width: min(var(--canvas-size), 100%);
-    width: min(var(--canvas-size), 100%);
+    justify-self: stretch;
+    width: var(--canvas-box-width);
+    max-width: min(var(--canvas-box-width), 100%);
+  }
+
+  .copje-tool-content {
+    width: var(--canvas-box-width);
+    max-width: none;
   }
 }
 
 @media (max-width: 1023px) {
   .copje-page {
-    --canvas-size: min(560px, calc(100vw - 2rem));
+    --canvas-size: min(560px, 100%);
+    --canvas-box-width: min(560px, 100%);
+    --canvas-view-width: min(240px, 100%);
   }
 
   .copje-shell {
-    width: calc(100% - 1rem);
+    width: 100%;
     margin: 0 auto;
-    overflow: hidden;
+    padding-inline: 0.75rem;
+    box-sizing: border-box;
   }
 
   .copje-page {
@@ -515,7 +684,7 @@
   }
 
   .copje-hero {
-    padding: 0.85rem;
+    padding: 0.45rem;
   }
 
   .copje-title {
@@ -528,18 +697,6 @@
 
   .copje-toolbar-grid {
     grid-template-columns: 1fr;
-  }
-
-  .copje-canvas-frame-inner,
-  .copje-canvas {
-    width: min(100%, var(--canvas-size));
-    height: min(100%, var(--canvas-size));
-  }
-
-  .copje-canvas-frame {
-    width: 100%;
-    max-width: 100%;
-    justify-self: center;
   }
 
   .copje-mobile-toggle {

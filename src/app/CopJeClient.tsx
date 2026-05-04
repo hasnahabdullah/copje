@@ -1,27 +1,15 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import {
-  Circle,
-  Copy,
-  Download,
-  Image as ImageIcon,
-  Layers,
-  Menu,
-  Palette,
-  RefreshCw,
-  Type,
-  X,
-  Play,
-} from 'lucide-react';
+import type { ChangeEvent } from 'react';
 import * as fabric from 'fabric';
 
 import './copje-editor.css';
 
 type FontChoice = 'Arial' | 'Times' | 'Montserrat' | 'Bebas Neue' | 'Poppins';
-type ShapeChoice = 'circle' | 'rectangle' | 'oval';
+type ShapeChoice = 'circle' | 'rectangle' | 'triangle' | 'oval';
 type BorderStyle = 'solid' | 'dashed' | 'double';
-type DateFormat = 'DD/MM/YYYY' | 'MM-DD-YYYY' | 'DD.MM.YYYY';
+type DateFormat = 'DD/MM/YYYY' | 'MM-DD-YYYY' | 'DD.MM.YYYY' | 'YYYY-MM-DD';
 
 type StampObject = fabric.Object & {
   uid?: string;
@@ -34,12 +22,13 @@ type StampObject = fabric.Object & {
 };
 
 const FONT_CHOICES: FontChoice[] = ['Arial', 'Times', 'Montserrat', 'Bebas Neue', 'Poppins'];
-const DATE_FORMATS: DateFormat[] = ['DD/MM/YYYY', 'MM-DD-YYYY', 'DD.MM.YYYY'];
-const DATE_PRESETS = ['DATE:'];
 const COLOR_PRESETS = ['#111111', '#2d62ff', '#d7263d', '#2c8a4b'];
+const CANVAS_BG_PRESETS = ['#ffffff', '#f3f7ff', '#fff7ef', '#edf6ff', '#f1f5f0'];
+const DATE_FORMAT_OPTIONS: DateFormat[] = ['DD/MM/YYYY', 'MM-DD-YYYY', 'DD.MM.YYYY', 'YYYY-MM-DD'];
 const STAMP_JSON_EXTRAS = ['uid', 'kind', 'shapeKind', 'borderStyle', 'sourceText', 'curveAngle', 'isDistressed'];
 
 const BASE_CANVAS = 560;
+const CANVAS_VIEW_MAX = 240;
 const MAX_HISTORY = 60;
 const SNAP_CENTER = 12;
 
@@ -51,19 +40,14 @@ const mapFontFamily = (font: FontChoice) => {
 const toId = () => `stamp-${Math.random().toString(36).slice(2, 10)}`;
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
-const formatDateNow = (format: DateFormat, includePrefix: boolean) => {
-  const now = new Date();
-  const dd = String(now.getDate()).padStart(2, '0');
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const yyyy = String(now.getFullYear());
-  const output =
-    format === 'MM-DD-YYYY'
-      ? `${mm}-${dd}-${yyyy}`
-      : format === 'DD.MM.YYYY'
-        ? `${dd}.${mm}.${yyyy}`
-        : `${dd}/${mm}/${yyyy}`;
-
-  return includePrefix ? `DATE: ${output}` : output;
+const getDateByFormat = (format: DateFormat, date = new Date()) => {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear());
+  if (format === 'MM-DD-YYYY') return `${month}-${day}-${year}`;
+  if (format === 'DD.MM.YYYY') return `${day}.${month}.${year}`;
+  if (format === 'YYYY-MM-DD') return `${year}-${month}-${day}`;
+  return `${day}/${month}/${year}`;
 };
 
 const getFileAsDataUrl = (file: File) =>
@@ -106,6 +90,22 @@ const removeWhiteBackground = (dataUrl: string) =>
     image.onerror = () => resolve(dataUrl);
   });
 
+const disableObjectLayoutEditing = (obj: fabric.Object) => {
+  obj.set({
+    lockMovementX: true,
+    lockMovementY: true,
+    lockRotation: true,
+    lockScalingX: true,
+    lockScalingY: true,
+    lockUniScaling: true,
+    lockSkewingX: true,
+    lockSkewingY: true,
+    hasControls: false,
+    hasBorders: false,
+    selectable: false,
+  });
+};
+
 const createDistressMarks = (obj: StampObject, color: string) => {
   const bounds = obj.getBoundingRect();
   const size = Math.max(1, Math.floor((bounds.width + bounds.height) / 16));
@@ -133,6 +133,7 @@ const createDistressMarks = (obj: StampObject, color: string) => {
     originX: 'left',
     originY: 'top',
   });
+  disableObjectLayoutEditing(overlay as unknown as fabric.Object);
 
   (overlay as any).uid = `distress-${obj.uid}`;
   (overlay as any).distressOf = obj.uid;
@@ -214,8 +215,9 @@ const createArcText = ({
 
 export default function CopJeClient() {
   const canvasHostRef = useRef<HTMLCanvasElement>(null);
+  const canvasFrameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<fabric.Canvas | null>(null);
-  const workspaceRef = useRef<HTMLElement | null>(null);
+  const projectInputRef = useRef<HTMLInputElement>(null);
   const ignoreHistoryRef = useRef(false);
   const distressMapRef = useRef(new Map<string, fabric.Object>());
   const historyRef = useRef<{ past: string[]; future: string[] }>({
@@ -223,21 +225,17 @@ export default function CopJeClient() {
     future: [],
   });
 
-  const [started, setStarted] = useState(false);
   const [guides, setGuides] = useState({ x: false, y: false });
   const [canvasSize] = useState(BASE_CANVAS);
   const [busy, setBusy] = useState(false);
 
-  const [canvasObjects, setCanvasObjects] = useState<{ id: string; label: string; type: string }[]>([]);
-  const [activeObjectId, setActiveObjectId] = useState<string | null>(null);
-  const [activeObjectType, setActiveObjectType] = useState('none');
   const [status, setStatus] = useState('Ready');
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
-  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [activeLayerIdForFit, setActiveLayerIdForFit] = useState<string | null>(null);
 
   const [textValue, setTextValue] = useState('APPROVED');
+  const [autoDateFormat, setAutoDateFormat] = useState<DateFormat>(DATE_FORMAT_OPTIONS[0]);
   const [selectedFont, setSelectedFont] = useState<FontChoice>('Arial');
   const [fontSize, setFontSize] = useState(80);
   const [fontWeight, setFontWeight] = useState<'normal' | 'bold'>('bold');
@@ -245,17 +243,23 @@ export default function CopJeClient() {
   const [letterSpacing, setLetterSpacing] = useState(0);
   const [curveAngle, setCurveAngle] = useState(0);
 
-  const [dateFormat, setDateFormat] = useState<DateFormat>('DD/MM/YYYY');
-  const [datePrefix, setDatePrefix] = useState(true);
-
   const [borderWidth, setBorderWidth] = useState(10);
+  const [lineBreak, setLineBreak] = useState(8);
   const [borderStyle, setBorderStyle] = useState<BorderStyle>('solid');
   const [activeShapeForFit] = useState('');
+  const [activeShapeKind, setActiveShapeKind] = useState<ShapeChoice | ''>('');
+  const [shapeWidth, setShapeWidth] = useState(340);
+  const [shapeHeight, setShapeHeight] = useState(340);
 
   const [inkColor, setInkColor] = useState(COLOR_PRESETS[0]);
   const [opacity, setOpacity] = useState(100);
   const [distressedEnabled, setDistressedEnabled] = useState(false);
   const [stripBg, setStripBg] = useState(false);
+  const [canvasBgColor, setCanvasBgColor] = useState('#ffffff');
+  const [canvasBgTransparent, setCanvasBgTransparent] = useState(true);
+  const [shapeTypeForAdd, setShapeTypeForAdd] = useState<ShapeChoice>('circle');
+  const [isShapeSelectorOpen, setIsShapeSelectorOpen] = useState(false);
+  const shapeSelectorRef = useRef<HTMLDivElement>(null);
 
   const syncHistory = () => {
     const current = historyRef.current;
@@ -277,32 +281,13 @@ export default function CopJeClient() {
   };
 
   const refreshLayerList = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const entries = canvas.getObjects().reduce<{ id: string; label: string; type: string }[]>((acc, shape) => {
-      const layer = shape as StampObject;
-      if (!layer.kind || layer.kind === 'distress') return acc;
-      const label =
-        layer.kind === 'text' || layer.kind === 'arc-text'
-          ? String((layer as any).text || layer.sourceText || 'Text').slice(0, 24) || 'Text'
-          : layer.kind === 'shape'
-            ? `Shape (${layer.shapeKind || 'circle'})`
-            : layer.kind === 'image'
-              ? 'Image / Logo'
-              : layer.type;
-      const id = layer.uid || toId();
-      layer.uid = id;
-      acc.push({ id, label, type: layer.kind });
-      return acc;
-    }, []);
-    setCanvasObjects(entries.reverse());
+    return;
   };
 
   const clearSelection = () => {
-    setActiveObjectId(null);
-    setActiveObjectType('none');
     setDistressedEnabled(false);
     setActiveLayerIdForFit(null);
+    setActiveShapeKind('');
   };
 
   const syncActiveObject = () => {
@@ -314,8 +299,6 @@ export default function CopJeClient() {
       return;
     }
 
-    setActiveObjectId(active.uid || null);
-    setActiveObjectType(active.kind || active.type);
     if (active.kind === 'text' || active.kind === 'arc-text') {
       setTextValue(String((active as any).text || (active.sourceText || 'APPROVED')));
       const activeFont = String((active as any).fontFamily || 'Arial');
@@ -328,9 +311,21 @@ export default function CopJeClient() {
       setDistressedEnabled(Boolean(active.isDistressed));
     }
     if (active.kind === 'shape') {
+      setActiveShapeKind(active.shapeKind || 'circle');
       setBorderWidth(Math.round(Number(active.strokeWidth || borderWidth)));
       setBorderStyle(active.borderStyle || 'solid');
+      const shapeDash = active.strokeDashArray;
+      if (Array.isArray(shapeDash) && shapeDash.length >= 2) {
+        setLineBreak(Math.round(Number(shapeDash[1]) || 0));
+      } else {
+        setLineBreak(0);
+      }
       setDistressedEnabled(Boolean(active.isDistressed));
+      const currentWidth = Math.max(1, Math.round(active.getScaledWidth()));
+      const currentHeight = Math.max(1, Math.round(active.getScaledHeight()));
+      const maxShapeSize = Math.max(currentWidth, currentHeight);
+      setShapeWidth(maxShapeSize);
+      setShapeHeight(maxShapeSize);
       setActiveLayerIdForFit(active.uid || null);
     }
     if (active.kind === 'image') {
@@ -371,6 +366,131 @@ export default function CopJeClient() {
     applyDistressToShape(target, true);
   };
 
+  const fitShapeToCanvas = (target: StampObject, keepCentered = false) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const bounds = target.getBoundingRect();
+    const width = bounds.width || 1;
+    const height = bounds.height || 1;
+    if (!width || !height) return;
+
+    const borderAllowance = Math.max(14, (Number(target.strokeWidth || 0) / 2) + 6);
+    const maxWidth = Math.max(1, canvas.width - borderAllowance * 2);
+    const maxHeight = Math.max(1, canvas.height - borderAllowance * 2);
+    const scaleFactor = Math.min(1, maxWidth / width, maxHeight / height);
+
+    target.scaleX = (target.scaleX || 1) * scaleFactor;
+    target.scaleY = (target.scaleY || 1) * scaleFactor;
+
+    if (keepCentered) {
+      target.left = canvas.width / 2;
+      target.top = canvas.height / 2;
+    }
+    target.setCoords();
+  };
+
+  const applyShapeSize = (target: StampObject, requestedSize = shapeWidth) => {
+    const normalized = clamp(Math.round(requestedSize), 76, 520);
+    const current = Math.max(target.getScaledWidth(), target.getScaledHeight()) || 1;
+    const scaleFactor = normalized / current;
+    target.scaleX = (target.scaleX || 1) * scaleFactor;
+    target.scaleY = (target.scaleY || 1) * scaleFactor;
+    fitShapeToCanvas(target, true);
+    setShapeWidth(normalized);
+    setShapeHeight(normalized);
+  };
+
+  const handleShapeSizeChange = (value: number) => {
+    const normalized = clamp(Math.round(value), 76, 520);
+    setShapeWidth(normalized);
+    setShapeHeight(normalized);
+    const canvas = canvasRef.current;
+    const active = canvas?.getActiveObject() as StampObject | null;
+    if (!active || active.kind !== 'shape') return;
+    applyShapeSize(active, normalized);
+    refreshDistressOverlay(active);
+    if (canvas) canvas.requestRenderAll();
+    saveState();
+  };
+
+  const handleShapeStrokeChange = (value: number) => {
+    const width = clamp(Math.round(value), 1, 40);
+    setBorderWidth(width);
+    const canvas = canvasRef.current;
+    const active = canvas?.getActiveObject() as StampObject | null;
+    if (!active || active.kind !== 'shape') return;
+    applyShapeBorder(active, width, lineBreak);
+    active.setCoords();
+    if (canvas) canvas.requestRenderAll();
+    refreshDistressOverlay(active);
+    saveState();
+  };
+
+  const handleLineBreakChange = (value: number) => {
+    const normalized = clamp(Math.round(value), 0, 80);
+    setLineBreak(normalized);
+    const canvas = canvasRef.current;
+    const active = canvas?.getActiveObject() as StampObject | null;
+    if (!active || active.kind !== 'shape') return;
+    applyShapeBorder(active, borderWidth, normalized);
+    active.setCoords();
+    if (canvas) canvas.requestRenderAll();
+    refreshDistressOverlay(active);
+    saveState();
+  };
+
+  const handleShapeSelect = (shape: ShapeChoice) => {
+    setShapeAsSingle(shape);
+    setIsShapeSelectorOpen(false);
+  };
+
+  useEffect(() => {
+    if (!isShapeSelectorOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const currentRef = shapeSelectorRef.current;
+      if (currentRef && !currentRef.contains(event.target as Node)) {
+        setIsShapeSelectorOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [isShapeSelectorOpen]);
+
+  const clearExistingShapes = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const shapeObjects = canvas.getObjects().filter((obj) => (obj as StampObject).kind === 'shape');
+    shapeObjects.forEach((obj) => {
+      const target = obj as StampObject;
+      const uid = target.uid;
+      const linkedOverlay = uid ? distressMapRef.current.get(uid) : null;
+      if (uid && linkedOverlay) {
+        canvas.remove(linkedOverlay);
+        distressMapRef.current.delete(uid);
+      }
+      canvas.remove(obj);
+    });
+    if (shapeObjects.length > 0) {
+      setActiveLayerIdForFit(null);
+      setActiveShapeKind('');
+      setShapeWidth(340);
+      setShapeHeight(340);
+      setDistressedEnabled(false);
+    }
+    canvas.renderAll();
+  };
+
+  const setShapeAsSingle = (shape: ShapeChoice) => {
+    setShapeTypeForAdd(shape);
+    clearExistingShapes();
+    addShapeObject(shape, true);
+  };
+
   const assignObjectUids = (canvas: fabric.Canvas) => {
     let changed = false;
     canvas.getObjects().forEach((obj) => {
@@ -385,23 +505,29 @@ export default function CopJeClient() {
     }
   };
 
-  const applyShapeBorder = (target: StampObject) => {
+  const applyShapeBorder = (target: StampObject, nextStrokeWidth = borderWidth, nextLineBreak = lineBreak) => {
     if (!target) return;
+    const isRectOrTri =
+      target.kind === 'shape' && (target.shapeKind === 'rectangle' || target.shapeKind === 'triangle');
+    const hasLineBreak = Math.max(0, Math.round(nextLineBreak)) > 0;
     target.set({
-      strokeWidth: borderWidth,
+      strokeWidth: nextStrokeWidth,
       strokeUniform: true,
-      strokeLineCap: 'round',
-      strokeLineJoin: 'round',
+      strokeLineCap: isRectOrTri ? 'butt' : hasLineBreak ? 'square' : 'round',
+      strokeLineJoin: isRectOrTri ? 'miter' : hasLineBreak ? 'miter' : 'round',
       stroke: inkColor,
     });
+    const dashValue = Math.max(0, Math.round(nextLineBreak));
 
     if (borderStyle === 'dashed') {
-      target.set({ strokeDashArray: [12, 8] });
+      target.set({ strokeDashArray: [Math.max(2, Math.round(nextStrokeWidth * 1.4)), dashValue || 8] });
     } else if (borderStyle === 'double') {
       target.set({
         stroke: inkColor,
-        strokeDashArray: [1, 2, 8, 2, 1],
+        strokeDashArray: [1, 2, dashValue || 8, 2, 1],
       });
+    } else if (dashValue > 0) {
+      target.set({ strokeDashArray: [Math.max(1, Math.round(nextStrokeWidth)), dashValue] });
     } else {
       target.set({ strokeDashArray: [] });
     }
@@ -411,69 +537,47 @@ export default function CopJeClient() {
     refreshDistressOverlay(target);
   };
 
+  const normalizeHex = (value: string) => {
+    if (!value) return '#ffffff';
+    if (/^#[0-9a-fA-F]{6}$/.test(value)) return value;
+    if (/^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i.test(value)) {
+      const values = value.match(/\d+/g)?.map(Number);
+      if (!values || values.length < 3) return '#ffffff';
+      const toHex = (amount: number) => amount.toString(16).padStart(2, '0');
+      const safe = [clamp(values[0], 0, 255), clamp(values[1], 0, 255), clamp(values[2], 0, 255)];
+      return `#${safe.map((value) => toHex(value)).join('')}`;
+    }
+    return '#ffffff';
+  };
+
+  const syncCanvasBackgroundFromCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const value = String(canvas.backgroundColor || '').trim();
+    const isTransparent =
+      !value || value === 'transparent' || value === 'rgba(0,0,0,0)' || value === 'rgba(0, 0, 0, 0)';
+    setCanvasBgTransparent(isTransparent);
+    setCanvasBgColor(isTransparent ? '#ffffff' : normalizeHex(value));
+  };
+
+  const applyCanvasBackground = (color = canvasBgColor, transparent = canvasBgTransparent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.backgroundColor = transparent ? 'rgba(0,0,0,0)' : color;
+    canvas.requestRenderAll();
+    saveState();
+    pushStatus(transparent ? 'Canvas background set to transparent' : `Canvas background set to ${color}`);
+  };
+
   const applyDefaultPreset = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     distressMapRef.current.clear();
-    historyRef.current = { past: [], future: [] };
     canvas.clear();
     canvas.backgroundColor = 'rgba(0,0,0,0)';
-    const diameter = Math.min(canvas.width, canvas.height);
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-    const stroke = Math.max(2, borderWidth);
-    const fillPadding = Math.max(6, stroke + 4);
-    const radius = Math.max(56, (diameter / 2) - fillPadding);
-    const circle = new fabric.Circle({
-      uid: toId(),
-      kind: 'shape',
-      shapeKind: 'circle',
-      fill: 'rgba(0,0,0,0)',
-      left: centerX,
-      top: centerY,
-      originX: 'center',
-      originY: 'center',
-      radius,
-      stroke: inkColor,
-      strokeWidth: borderWidth,
-      strokeLineCap: 'round',
-      strokeLineJoin: 'round',
-    }) as StampObject;
-
-    const text = new fabric.Text('STAMP', {
-      uid: toId(),
-      kind: 'text',
-      fill: inkColor,
-      left: centerX,
-      top: centerY,
-      originX: 'center',
-      originY: 'center',
-      fontFamily: mapFontFamily('Arial'),
-      fontSize: Math.max(48, Math.round(radius * 0.44)),
-      fontWeight: 'bold',
-      fontStyle: 'normal',
-      textAlign: 'center',
-      charSpacing: 8,
-      opacity: opacity / 100,
-    }) as StampObject;
-
-    const maxTextWidth = Math.max(44, radius * 1.75);
-    if (text.width) {
-      text.scaleToWidth(maxTextWidth);
-    }
-
-    applyShapeBorder(circle);
-    canvas.add(circle, text);
-    canvas.centerObject(circle);
-    canvas.centerObject(text);
-    circle.setCoords();
-    text.setCoords();
-    canvas.setActiveObject(text);
-    canvas.requestRenderAll();
     saveState();
-    refreshLayerList();
-    setStatus('Preset "default" applied');
+    setStatus('Preset "default" cleared');
   };
 
   const pushStatus = (message: string, timeout = 2200) => {
@@ -485,16 +589,33 @@ export default function CopJeClient() {
     }
   };
 
-  const applyHistoryState = (json: string) =>
+  const applyHistoryState = (json: string, resetHistory = false) =>
     new Promise<void>((resolve) => {
       const canvas = canvasRef.current;
       if (!canvas) return resolve();
       ignoreHistoryRef.current = true;
       canvas.loadFromJSON(json, () => {
-        assignObjectUids(canvas);
+        distressMapRef.current.clear();
+      canvas.getObjects().forEach(disableObjectLayoutEditing);
+      canvas.getObjects().forEach((obj) => {
+        const target = obj as StampObject;
+        if (target.kind === 'shape') {
+          if (!target.fill || target.fill === 'transparent') {
+            target.set({ fill: 'rgba(0,0,0,0)' });
+          }
+          fitShapeToCanvas(target, true);
+        }
+      });
+      assignObjectUids(canvas);
+        if (resetHistory) {
+          historyRef.current.past = [json];
+          historyRef.current.future = [];
+        }
         refreshLayerList();
+        syncCanvasBackgroundFromCanvas();
         syncActiveObject();
         canvas.requestRenderAll();
+        syncHistory();
         ignoreHistoryRef.current = false;
         resolve();
       });
@@ -530,51 +651,10 @@ export default function CopJeClient() {
     syncHistory();
   };
 
-  const onCanvasEvents = (event: { target?: fabric.Object | undefined }) => {
+  const addTextObject = (asArc = false, record = true, textOverride?: string) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const target = event.target as StampObject | undefined;
-    if (!target || !target.uid) return;
-
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-
-    const bWidth = target.getScaledWidth();
-    const bHeight = target.getScaledHeight();
-    const midX = (target.left || 0) + bWidth / 2;
-    const midY = (target.top || 0) + bHeight / 2;
-
-    let guideX = false;
-    let guideY = false;
-    const updatedLeft = target.left || 0;
-    const updatedTop = target.top || 0;
-    if (Math.abs(midX - centerX) <= SNAP_CENTER) {
-      target.left = centerX - bWidth / 2;
-      guideX = true;
-    }
-    if (Math.abs(midY - centerY) <= SNAP_CENTER) {
-      target.top = centerY - bHeight / 2;
-      guideY = true;
-    }
-
-    if (guideX || guideY) {
-      setGuides({ x: guideX, y: guideY });
-      window.clearTimeout((onCanvasEvents as unknown as { __t?: number }).__t);
-      (onCanvasEvents as unknown as { __t?: number }).__t = window.setTimeout(() => {
-        setGuides({ x: false, y: false });
-      }, 500);
-    }
-    target.setCoords();
-    refreshDistressOverlay(target);
-    target.set({ left: updatedLeft, top: updatedTop });
-    canvas.requestRenderAll();
-    syncActiveObject();
-  };
-
-  const addTextObject = (asArc = false, record = true) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const value = textValue.trim() || 'APPROVED';
+    const value = textOverride?.trim() || textValue.trim() || 'APPROVED';
 
     if (asArc) {
       const arc = createArcText({
@@ -597,6 +677,7 @@ export default function CopJeClient() {
         fill: inkColor,
         opacity: opacity / 100,
       });
+      disableObjectLayoutEditing(arc);
       canvas.add(arc);
       canvas.setActiveObject(arc);
       canvas.requestRenderAll();
@@ -619,6 +700,7 @@ export default function CopJeClient() {
       originX: 'center',
       originY: 'center',
     }) as StampObject;
+    disableObjectLayoutEditing(textObj);
     canvas.add(textObj);
     canvas.setActiveObject(textObj);
     canvas.requestRenderAll();
@@ -662,12 +744,28 @@ export default function CopJeClient() {
         width: 340,
         height: 210,
         fill: 'rgba(0,0,0,0)',
-        rx: 20,
-        ry: 20,
         stroke: inkColor,
         strokeWidth: borderWidth,
-        strokeLineCap: 'round',
-        strokeLineJoin: 'round',
+        strokeLineCap: 'butt',
+        strokeLineJoin: 'miter',
+      }) as StampObject;
+    }
+    if (shape === 'triangle') {
+      shapeObject = new fabric.Triangle({
+        uid: toId(),
+        kind: 'shape',
+        shapeKind: 'triangle',
+        left: centerX,
+        top: centerY,
+        originX: 'center',
+        originY: 'center',
+        width: 360,
+        height: 280,
+        fill: 'rgba(0,0,0,0)',
+        stroke: inkColor,
+        strokeWidth: borderWidth,
+        strokeLineCap: 'butt',
+        strokeLineJoin: 'miter',
       }) as StampObject;
     }
     if (shape === 'oval') {
@@ -679,8 +777,8 @@ export default function CopJeClient() {
         top: centerY,
         originX: 'center',
         originY: 'center',
-        rx: 190,
-        ry: 120,
+        rx: 220,
+        ry: 160,
         fill: 'rgba(0,0,0,0)',
         stroke: inkColor,
         strokeWidth: borderWidth,
@@ -690,8 +788,13 @@ export default function CopJeClient() {
     }
 
     if (!shapeObject) return;
+    disableObjectLayoutEditing(shapeObject);
 
-    applyShapeBorder(shapeObject);
+    if (!shapeObject.fill || shapeObject.fill === 'transparent') {
+      shapeObject.set('fill', 'rgba(0,0,0,0)');
+    }
+    applyShapeBorder(shapeObject, borderWidth, lineBreak);
+    applyShapeSize(shapeObject, shapeWidth);
     canvas.add(shapeObject);
     canvas.setActiveObject(shapeObject);
     if (record) saveState();
@@ -719,6 +822,7 @@ export default function CopJeClient() {
             imageObj.scaleToHeight(canvas.height * 0.55);
             imageObj.scaleToWidth(Math.min(canvas.width * 0.55, (imageObj.scaleX || 1) * (imageObj.width || 1)));
           }
+          disableObjectLayoutEditing(imageObj);
           resolve(imageObj);
         };
         (fabric.Image.fromURL as any)(finalData, callback, { crossOrigin: 'anonymous' });
@@ -767,6 +871,7 @@ export default function CopJeClient() {
         fill: inkColor,
         opacity: opacity / 100,
       });
+      canvas.requestRenderAll();
       return;
     }
 
@@ -868,6 +973,8 @@ export default function CopJeClient() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     canvas.clear();
+    setCanvasBgTransparent(true);
+    setCanvasBgColor('#ffffff');
     canvas.backgroundColor = 'rgba(0,0,0,0)';
     canvas.requestRenderAll();
     historyRef.current = { past: [], future: [] };
@@ -876,30 +983,6 @@ export default function CopJeClient() {
     clearSelection();
     saveState();
     pushStatus('Canvas reset');
-  };
-
-  const applyBorderToActive = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const active = canvas.getActiveObject() as StampObject | null;
-    if (!active || active.kind !== 'shape') {
-      pushStatus('Select a shape first.');
-      return;
-    }
-    applyShapeBorder(active);
-    canvas.requestRenderAll();
-    saveState();
-    pushStatus('Shape border updated');
-  };
-
-  const jumpToTarget = (id: string) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const object = (canvas.getObjects() as StampObject[]).find((shape) => shape.uid === id);
-    if (!object) return;
-    canvas.setActiveObject(object);
-    canvas.requestRenderAll();
-    syncActiveObject();
   };
 
   const exportPNG = async () => {
@@ -944,50 +1027,44 @@ export default function CopJeClient() {
     pushStatus('Copied to clipboard');
   };
 
+  const exportProjectJSON = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const json = JSON.stringify(canvas.toDatalessJSON(STAMP_JSON_EXTRAS), null, 2);
+    const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `copje-stamp-${Date.now()}.copje.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    pushStatus('Design JSON exported');
+  };
+
+  const loadProjectFromJSON = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      const rawText = await file.text();
+      const parsed = JSON.parse(rawText);
+      const json = JSON.stringify(parsed);
+      await applyHistoryState(json, true);
+      pushStatus('Project loaded');
+    } catch {
+      pushStatus('Unable to load project JSON');
+    } finally {
+      if (projectInputRef.current) {
+        projectInputRef.current.value = '';
+      }
+      setBusy(false);
+    }
+  };
+
   const applyPreset = async (presetId: string) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     resetCanvas();
     await new Promise((resolve) => setTimeout(resolve, 20));
-
-    if (presetId === 'received-date') {
-      const shape = addShapeObject('circle', false);
-      addTextObject(false, false);
-      const shapeObj = canvas.getObjects().find((o) => (o as StampObject).kind === 'shape') as StampObject | undefined;
-      const textObj = canvas.getObjects().find((o) => (o as StampObject).kind === 'text') as StampObject | undefined;
-      if (shapeObj) {
-        shapeObj.set({ fill: 'rgba(0,0,0,0)' });
-      }
-      if (textObj) {
-        textObj.set({
-          text: 'RECEIVED',
-          top: 220,
-          left: 280,
-          fontFamily: mapFontFamily('Bebas Neue'),
-          fontSize: 110,
-          fontWeight: 'bold',
-          fontStyle: 'normal',
-          fill: inkColor,
-          charSpacing: 22,
-        });
-      }
-      const date = formatDateNow(dateFormat, datePrefix);
-      const dateText = new fabric.Text(date, {
-        uid: toId(),
-        kind: 'text',
-        left: 280,
-        top: 380,
-        fill: inkColor,
-        fontFamily: mapFontFamily('Arial'),
-        fontSize: 58,
-        fontWeight: 'bold',
-        fontStyle: 'normal',
-        opacity: opacity / 100,
-        originX: 'center',
-        originY: 'center',
-      }) as StampObject;
-      canvas.add(dateText);
-    }
 
     if (presetId === 'default') {
       applyDefaultPreset();
@@ -995,7 +1072,7 @@ export default function CopJeClient() {
     }
 
     if (presetId === 'approved') {
-      addShapeObject('oval', false);
+      addShapeObject('triangle', false);
       addTextObject(false, false);
       const text = canvas.getObjects().find((o) => (o as StampObject).kind === 'text') as StampObject | undefined;
       if (text) {
@@ -1042,6 +1119,7 @@ export default function CopJeClient() {
         fontSize: 78,
         fill: inkColor,
       }) as StampObject;
+      disableObjectLayoutEditing(name);
       const title = new fabric.Text('Director | Phone:', {
         uid: toId(),
         kind: 'text',
@@ -1053,6 +1131,7 @@ export default function CopJeClient() {
         fontSize: 42,
         fill: inkColor,
       }) as StampObject;
+      disableObjectLayoutEditing(title);
       const phone = new fabric.Text('+60 12-345 6789', {
         uid: toId(),
         kind: 'text',
@@ -1064,6 +1143,7 @@ export default function CopJeClient() {
         fontSize: 38,
         fill: inkColor,
       }) as StampObject;
+      disableObjectLayoutEditing(phone);
       const shape = new fabric.Circle({
         uid: toId(),
         kind: 'shape',
@@ -1075,6 +1155,7 @@ export default function CopJeClient() {
         originX: 'center',
         originY: 'center',
       }) as StampObject;
+      disableObjectLayoutEditing(shape);
       applyShapeBorder(shape);
       canvas.add(shape, name, title, phone);
     }
@@ -1091,6 +1172,7 @@ export default function CopJeClient() {
         originX: 'center',
         originY: 'center',
       }) as StampObject;
+      disableObjectLayoutEditing(shape);
       applyShapeBorder(shape);
       const topText = new fabric.Text('COMPANY SDN BHD', {
         uid: toId(),
@@ -1105,6 +1187,7 @@ export default function CopJeClient() {
         fontWeight: 'bold',
         charSpacing: 10,
       }) as StampObject;
+      disableObjectLayoutEditing(topText);
       const midText = new fabric.Text('REGISTERED', {
         uid: toId(),
         kind: 'text',
@@ -1117,6 +1200,7 @@ export default function CopJeClient() {
         fontSize: 60,
         fontWeight: 'bold',
       }) as StampObject;
+      disableObjectLayoutEditing(midText);
       const bottomText = new fabric.Text('STAMP', {
         uid: toId(),
         kind: 'text',
@@ -1129,6 +1213,7 @@ export default function CopJeClient() {
         fontSize: 62,
         fontWeight: 'bold',
       }) as StampObject;
+      disableObjectLayoutEditing(bottomText);
       canvas.add(shape, topText, midText, bottomText);
     }
 
@@ -1155,6 +1240,8 @@ export default function CopJeClient() {
         originX: 'center',
         originY: 'center',
       }) as StampObject;
+      disableObjectLayoutEditing(inner);
+      disableObjectLayoutEditing(outer);
       applyShapeBorder(outer);
       inner.stroke = inkColor;
       inner.strokeWidth = 6;
@@ -1171,6 +1258,7 @@ export default function CopJeClient() {
         fontSize: 78,
         fontWeight: 'bold',
       }) as StampObject;
+      disableObjectLayoutEditing(title);
       const center = new fabric.Text('CIRCULAR', {
         uid: toId(),
         kind: 'text',
@@ -1183,6 +1271,7 @@ export default function CopJeClient() {
         fontSize: 52,
         fontWeight: 'bold',
       }) as StampObject;
+      disableObjectLayoutEditing(center);
       const footer = new fabric.Text('STAMP', {
         uid: toId(),
         kind: 'text',
@@ -1195,21 +1284,130 @@ export default function CopJeClient() {
         fontSize: 54,
         fontWeight: 'bold',
       }) as StampObject;
+      disableObjectLayoutEditing(footer);
       applyShapeBorder(inner);
       canvas.add(outer, inner, title, center, footer);
+    }
+
+    if (presetId === 'received') {
+      const shape = new fabric.Rect({
+        uid: toId(),
+        kind: 'shape',
+        shapeKind: 'rectangle',
+        left: 280,
+        top: 280,
+        originX: 'center',
+        originY: 'center',
+        width: 390,
+        height: 210,
+        fill: 'rgba(0,0,0,0)',
+        stroke: inkColor,
+        strokeWidth: borderWidth,
+      }) as StampObject;
+      disableObjectLayoutEditing(shape);
+      applyShapeBorder(shape);
+      const received = new fabric.Text('RECEIVED', {
+        uid: toId(),
+        kind: 'text',
+        fill: inkColor,
+        left: 280,
+        top: 220,
+        originX: 'center',
+        originY: 'center',
+        fontFamily: mapFontFamily('Montserrat'),
+        fontSize: 64,
+        fontWeight: 'bold',
+      }) as StampObject;
+      const date = new fabric.Text(getDateByFormat('DD/MM/YYYY'), {
+        uid: toId(),
+        kind: 'text',
+        fill: inkColor,
+        left: 280,
+        top: 300,
+        originX: 'center',
+        originY: 'center',
+        fontFamily: mapFontFamily('Arial'),
+        fontSize: 52,
+        fontWeight: 'bold',
+      }) as StampObject;
+      const note = new fabric.Text('DATE', {
+        uid: toId(),
+        kind: 'text',
+        fill: inkColor,
+        left: 280,
+        top: 360,
+        originX: 'center',
+        originY: 'center',
+        fontFamily: mapFontFamily('Times'),
+        fontSize: 42,
+      }) as StampObject;
+      disableObjectLayoutEditing(received);
+      disableObjectLayoutEditing(date);
+      disableObjectLayoutEditing(note);
+      canvas.add(shape, received, date, note);
+    }
+
+    if (presetId === 'signature') {
+      const shape = new fabric.Rect({
+        uid: toId(),
+        kind: 'shape',
+        shapeKind: 'rectangle',
+        left: 280,
+        top: 280,
+        originX: 'center',
+        originY: 'center',
+        width: 470,
+        height: 270,
+        fill: 'rgba(0,0,0,0)',
+        stroke: inkColor,
+        strokeWidth: borderWidth,
+      }) as StampObject;
+      disableObjectLayoutEditing(shape);
+      applyShapeBorder(shape);
+      const label = new fabric.Text('AUTHORIZED SIGNATURE', {
+        uid: toId(),
+        kind: 'text',
+        fill: inkColor,
+        left: 280,
+        top: 195,
+        originX: 'center',
+        originY: 'center',
+        fontFamily: mapFontFamily('Montserrat'),
+        fontSize: 44,
+        fontWeight: 'bold',
+      }) as StampObject;
+      const signLine = new fabric.Text('__________________________', {
+        uid: toId(),
+        kind: 'text',
+        fill: inkColor,
+        left: 280,
+        top: 305,
+        originX: 'center',
+        originY: 'center',
+        fontFamily: mapFontFamily('Times'),
+        fontSize: 44,
+      }) as StampObject;
+      const name = new fabric.Text('Name', {
+        uid: toId(),
+        kind: 'text',
+        fill: inkColor,
+        left: 280,
+        top: 360,
+        originX: 'center',
+        originY: 'center',
+        fontFamily: mapFontFamily('Arial'),
+        fontSize: 40,
+      }) as StampObject;
+      disableObjectLayoutEditing(label);
+      disableObjectLayoutEditing(signLine);
+      disableObjectLayoutEditing(name);
+      canvas.add(shape, label, signLine, name);
     }
 
     canvas.renderAll();
     saveState();
     refreshLayerList();
     setStatus(`Preset "${presetId}" applied`);
-  };
-
-  const centerCanvas = () => {
-    const workspace = workspaceRef.current;
-    if (workspace) {
-      workspace.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
   };
 
   const fitActiveImageToShape = () => {
@@ -1248,8 +1446,19 @@ export default function CopJeClient() {
     pushStatus('Image fitted to shape');
   };
 
+  const applyInkToActive = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const active = canvas.getActiveObject() as StampObject | null;
+    if (!active) {
+      pushStatus('Select an item first.');
+      return;
+    }
+    applyInkColor();
+    saveState();
+  };
+
   useEffect(() => {
-    if (started) return;
     const canvasElement = canvasHostRef.current;
     if (!canvasElement) return;
 
@@ -1258,15 +1467,21 @@ export default function CopJeClient() {
       height: BASE_CANVAS,
       backgroundColor: 'rgba(0,0,0,0)',
       preserveObjectStacking: true,
-      selection: true,
+      selection: false,
       uniformScaling: true,
+      selectionColor: 'rgba(0,0,0,0)',
+      selectionBorderColor: 'rgba(0,0,0,0)',
+      hoverCursor: 'default',
     });
 
     canvasRef.current = canvas;
 
     const handleSelect = () => syncActiveObject();
     const handleClear = () => clearSelection();
-    const handleMutate = () => {
+    const handleMutate = (event?: { target?: fabric.Object }) => {
+      if (event?.target) {
+        disableObjectLayoutEditing(event.target);
+      }
       syncActiveObject();
       refreshLayerList();
       saveState();
@@ -1275,6 +1490,18 @@ export default function CopJeClient() {
       syncActiveObject();
       refreshLayerList();
       saveState();
+    };
+    const updateCanvasFrameSize = () => {
+      const frame = canvasFrameRef.current;
+      const host = canvasHostRef.current;
+      const shell = frame?.parentElement;
+      if (!frame || !shell || !host) return;
+      const available = Math.max(0, shell.clientWidth - 1);
+      const target = Math.max(140, Math.min(CANVAS_VIEW_MAX, available));
+      frame.style.width = `${target}px`;
+      frame.style.height = `${target}px`;
+      host.style.width = `${target}px`;
+      host.style.height = `${target}px`;
     };
 
     (canvas as any).on('selection:created', handleSelect);
@@ -1285,23 +1512,24 @@ export default function CopJeClient() {
       refreshLayerList();
       saveState();
     });
-    (canvas as any).on('object:moving', onCanvasEvents);
     (canvas as any).on('object:modified', handleModified);
-    (canvas as any).on('mouse:down', () => {
-      const guide = onCanvasEvents as unknown as { __t?: number };
-      if (guide.__t) {
-        window.clearTimeout(guide.__t);
-        guide.__t = undefined;
-        setGuides({ x: false, y: false });
-      }
-    });
 
     const initial = JSON.stringify(canvas.toDatalessJSON(STAMP_JSON_EXTRAS));
     historyRef.current.past.push(initial);
     refreshLayerList();
     syncHistory();
-    setStarted(true);
     applyDefaultPreset();
+    updateCanvasFrameSize();
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => updateCanvasFrameSize())
+        : null;
+    const shell = canvasFrameRef.current?.parentElement;
+    if (shell && resizeObserver) {
+      resizeObserver.observe(shell);
+    }
+    window.addEventListener('resize', updateCanvasFrameSize);
+    window.addEventListener('orientationchange', updateCanvasFrameSize);
 
     return () => {
       (canvas as any).off('selection:created', handleSelect);
@@ -1312,13 +1540,12 @@ export default function CopJeClient() {
         refreshLayerList();
         saveState();
       });
-      (canvas as any).off('object:moving', onCanvasEvents);
       (canvas as any).off('object:modified', handleModified);
-      (canvas as any).off('mouse:down', () => {
-        setGuides({ x: false, y: false });
-      });
       canvas.dispose();
       canvasRef.current = null;
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateCanvasFrameSize);
+      window.removeEventListener('orientationchange', updateCanvasFrameSize);
     };
   }, []);
 
@@ -1330,220 +1557,164 @@ export default function CopJeClient() {
           <h1 className="copje-title">Create Rubber Stamps Online</h1>
         </section>
 
-        <section ref={workspaceRef} className="copje-workspace-grid">
-          <aside className={`copje-tool-drawer ${mobileToolsOpen ? 'open' : ''}`}>
-            <div className="copje-tool-header">
-              <div>
-                <p className="copje-tool-kicker">Tool studio</p>
-                <h2 className="copje-tool-title">Build controls</h2>
+        <section className="copje-workspace-grid">
+            <section className="copje-main-column">
+            <section className="copje-canvas-toolbar-strip">
+              <div className="copje-shape-selector" ref={shapeSelectorRef}>
+                <button
+                  type="button"
+                  className="copje-tool-selector-btn copje-shape-selector-trigger"
+                  aria-expanded={isShapeSelectorOpen}
+                  aria-label={`Shapes, currently ${shapeTypeForAdd}`}
+                  onClick={() => setIsShapeSelectorOpen((open) => !open)}
+                >
+                  Shapes
+                </button>
+                {isShapeSelectorOpen && (
+                  <div className="copje-shape-selector-popover" role="radiogroup" aria-label="Shape options">
+                    <button
+                      type="button"
+                      className={`copje-shape-option ${shapeTypeForAdd === 'circle' ? 'is-active' : ''}`}
+                      onClick={() => handleShapeSelect('circle')}
+                    >
+                      <span className="copje-shape-radio" />
+                      <span>Circle</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`copje-shape-option ${shapeTypeForAdd === 'rectangle' ? 'is-active' : ''}`}
+                      onClick={() => handleShapeSelect('rectangle')}
+                    >
+                      <span className="copje-shape-radio" />
+                      <span>Rectangle</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`copje-shape-option ${shapeTypeForAdd === 'triangle' ? 'is-active' : ''}`}
+                      onClick={() => handleShapeSelect('triangle')}
+                    >
+                      <span className="copje-shape-radio" />
+                      <span>Triangle</span>
+                    </button>
+                  </div>
+                )}
               </div>
-              <button
-                type="button"
-                className="copje-btn copje-btn-ghost lg:hidden"
-                onClick={() => setMobileToolsOpen(false)}
-              >
-                <X size={14} />
-                close
-              </button>
+            </section>
+            <div
+              ref={canvasFrameRef}
+              className="copje-canvas-frame-inner"
+              style={{ width: `${CANVAS_VIEW_MAX}px`, height: `${CANVAS_VIEW_MAX}px` }}
+            >
+              <div className="copje-canvas-ruler" />
+              <canvas
+                ref={canvasHostRef}
+                className="copje-canvas"
+                width={canvasSize}
+                height={canvasSize}
+                style={{ width: `${CANVAS_VIEW_MAX}px`, height: `${CANVAS_VIEW_MAX}px` }}
+              />
+              <div className={`copje-guide x ${guides.x ? 'on' : ''}`} />
+              <div className={`copje-guide y ${guides.y ? 'on' : ''}`} />
             </div>
+            <section className="copje-tool-content">
+              <section className="copje-toolbar">
+                <h3>Shapes</h3>
 
-            <section className="copje-toolbar">
-              <h3>1) Text Tools</h3>
-              <button
-                type="button"
-                className="copje-btn copje-btn-primary"
-                onClick={() => {
-                  centerCanvas();
-                  setMobileToolsOpen(false);
-                  setStatus('Ready');
-                }}
-              >
-                <Play size={14} />
-                Start
-              </button>
-
-              <div className="copje-toolbar-grid">
-                <button type="button" className="copje-btn" onClick={() => addTextObject(false)}>
-                  <Type size={14} />
-                  Add text
-                </button>
-                <button type="button" className="copje-btn" onClick={() => addTextObject(true)}>
-                  <RefreshCw size={14} />
-                  Add arc text
-                </button>
-              </div>
-
-              <div className="copje-toolbar-grid">
-                <button
-                  type="button"
-                  className={`copje-btn ${fontWeight === 'bold' ? 'copje-btn-primary' : ''}`}
-                  onClick={() => setFontWeight((prev) => (prev === 'bold' ? 'normal' : 'bold'))}
-                >
-                  Bold
-                </button>
-                <button
-                  type="button"
-                  className={`copje-btn ${fontStyle === 'italic' ? 'copje-btn-primary' : ''}`}
-                  onClick={() => setFontStyle((prev) => (prev === 'italic' ? 'normal' : 'italic'))}
-                >
-                  Italic
-                </button>
-              </div>
-
-              <label className="copje-field-label">Font family</label>
-              <select
-                value={selectedFont}
-                onChange={(event) => setSelectedFont(event.target.value as FontChoice)}
-                className="copje-select"
-              >
-                {FONT_CHOICES.map((font) => (
-                  <option key={font} value={font}>
-                    {font}
-                  </option>
-                ))}
-              </select>
-
-              <label className="copje-field-label">Font size: {fontSize}px</label>
-              <input
-                type="range"
-                min={26}
-                max={180}
-                value={fontSize}
-                onChange={(event) => setFontSize(Number(event.target.value))}
-                className="copje-range"
-              />
-
-              <label className="copje-field-label">Letter spacing: {letterSpacing}</label>
-              <input
-                type="range"
-                min={-20}
-                max={120}
-                value={letterSpacing}
-                onChange={(event) => setLetterSpacing(Number(event.target.value))}
-                className="copje-range"
-              />
-
-              <label className="copje-field-label">Arc curve: {curveAngle}°</label>
-              <input
-                type="range"
-                min={-180}
-                max={180}
-                value={curveAngle}
-                onChange={(event) => setCurveAngle(Number(event.target.value))}
-                className="copje-range"
-              />
-
-              <button type="button" className="copje-btn w-full" onClick={applyActiveText}>
-                Apply text changes
-              </button>
-            </section>
-
-            <section className="copje-toolbar">
-              <h3>2) Auto Date Stamp</h3>
-              <div className="copje-toolbar-grid">
-                {DATE_FORMATS.map((format) => (
-                  <button
-                    type="button"
-                    key={format}
-                    className={`copje-btn ${dateFormat === format ? 'copje-btn-primary' : ''}`}
-                    onClick={() => setDateFormat(format)}
-                  >
-                    {format}
-                  </button>
-                ))}
-              </div>
-              <label className="copje-field-label mt-2">
-                {DATE_PRESETS[0]}
-                <input type="checkbox" checked={datePrefix} onChange={(event) => setDatePrefix(event.target.checked)} />
-              </label>
-              <button type="button" className="copje-btn w-full" onClick={() => addTextObject(false)}>
-                Insert auto date
-              </button>
-            </section>
-
-            <section className="copje-toolbar">
-              <h3>3) Stamp Shapes</h3>
-              <div className="copje-toolbar-grid">
-                <button type="button" className="copje-btn" onClick={() => addShapeObject('circle')}>
-                  <Circle size={14} />
-                  Circle
-                </button>
-                <button type="button" className="copje-btn" onClick={() => addShapeObject('rectangle')}>
-                  ▦ Rectangle
-                </button>
-                <button type="button" className="copje-btn" onClick={() => addShapeObject('oval')}>
-                  Oval
-                </button>
-              </div>
-
-              <label className="copje-field-label">Border thickness: {borderWidth}px</label>
-              <input
-                type="range"
-                min={2}
-                max={28}
-                value={borderWidth}
-                onChange={(event) => setBorderWidth(Number(event.target.value))}
-                className="copje-range"
-              />
-              <div className="copje-toolbar-grid">
-                <button
-                  type="button"
-                  className={`copje-btn ${borderStyle === 'solid' ? 'copje-btn-primary' : ''}`}
-                  onClick={() => setBorderStyle('solid')}
-                >
-                  solid
-                </button>
-                <button
-                  type="button"
-                  className={`copje-btn ${borderStyle === 'dashed' ? 'copje-btn-primary' : ''}`}
-                  onClick={() => setBorderStyle('dashed')}
-                >
-                  dashed
-                </button>
-                <button
-                  type="button"
-                  className={`copje-btn ${borderStyle === 'double' ? 'copje-btn-primary' : ''}`}
-                  onClick={() => setBorderStyle('double')}
-                >
-                  double line
-                </button>
-              </div>
-              <button type="button" className="copje-btn w-full" onClick={applyBorderToActive}>
-                Apply shape style
-              </button>
-            </section>
-
-            <section className="copje-toolbar">
-              <h3>4) Image / Logo</h3>
-              <label className="copje-field-label">Upload PNG / JPG</label>
-              <input
-                type="file"
-                className="copje-input"
-                accept="image/png,image/jpg,image/jpeg"
-                onChange={async (event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
-                  const data = await getFileAsDataUrl(file);
-                  await addImageObject(data);
-                }}
-              />
-              <label className="copje-field-label">
-                <input type="checkbox" checked={stripBg} onChange={(event) => setStripBg(event.target.checked)} />
-                Remove white background
-              </label>
-              <button type="button" className="copje-btn w-full" onClick={fitActiveImageToShape}>
-                <ImageIcon size={14} />
-                Fit image to selected shape
-              </button>
-            </section>
-
-            <section className="copje-toolbar">
-              <h3>5) Ink & Effects</h3>
-              <label className="copje-field-label">Ink color</label>
-              <div className="copje-color-row">
+                <label className="copje-field-label">Size</label>
                 <input
-                  type="color"
+                  className="copje-range"
+                  type="range"
+                  min={76}
+                  max={520}
+                  value={shapeWidth}
+                  onChange={(event) => handleShapeSizeChange(Number(event.target.value))}
+                />
+                <label className="copje-field-label">Stroke</label>
+                <input
+                  className="copje-range"
+                  type="range"
+                  min={1}
+                  max={40}
+                  value={borderWidth}
+                  onChange={(event) => handleShapeStrokeChange(Number(event.target.value))}
+                />
+                <label className="copje-field-label">Line Break</label>
+                <input
+                  className="copje-range"
+                  type="range"
+                  min={0}
+                  max={80}
+                  value={lineBreak}
+                  onChange={(event) => handleLineBreakChange(Number(event.target.value))}
+                />
+              </section>
+
+              <section className="copje-toolbar">
+                <h3>Text</h3>
+                <label className="copje-field-label">Text value</label>
+                <input
+                  className="copje-input"
+                  value={textValue}
+                  onChange={(event) => setTextValue(event.target.value)}
+                  placeholder="Enter stamp text"
+                />
+                <label className="copje-field-label">Font</label>
+                <select
+                  className="copje-select"
+                  value={selectedFont}
+                  onChange={(event) => setSelectedFont(event.target.value as FontChoice)}
+                >
+                  {FONT_CHOICES.map((font) => (
+                    <option key={font} value={font}>
+                      {font}
+                    </option>
+                  ))}
+                </select>
+                <label className="copje-field-label">Font size: {fontSize}px</label>
+                <input
+                  className="copje-range"
+                  type="range"
+                  min={24}
+                  max={160}
+                  value={fontSize}
+                  onChange={(event) => setFontSize(Number(event.target.value))}
+                />
+                <div className="copje-toolbar-grid">
+                  <button
+                    className="copje-btn copje-btn-ghost"
+                    onClick={() => setFontWeight(fontWeight === 'bold' ? 'normal' : 'bold')}
+                  >
+                    Toggle Weight
+                  </button>
+                  <button
+                    className="copje-btn copje-btn-ghost"
+                    onClick={() => setFontStyle(fontStyle === 'italic' ? 'normal' : 'italic')}
+                  >
+                    Toggle Style
+                  </button>
+                </div>
+                <label className="copje-field-label">Letter spacing: {letterSpacing}</label>
+                <input
+                  className="copje-range"
+                  type="range"
+                  min={-12}
+                  max={18}
+                  value={letterSpacing}
+                  onChange={(event) => setLetterSpacing(Number(event.target.value))}
+                />
+                <label className="copje-field-label">Arc angle: {curveAngle}°</label>
+                <input
+                  className="copje-range"
+                  type="range"
+                  min={-180}
+                  max={180}
+                  value={curveAngle}
+                  onChange={(event) => setCurveAngle(Number(event.target.value))}
+                />
+                <label className="copje-field-label">Color</label>
+                <input
                   className="copje-color"
+                  type="color"
                   value={inkColor}
                   onChange={(event) => setInkColor(event.target.value)}
                 />
@@ -1555,179 +1726,38 @@ export default function CopJeClient() {
                       className="copje-swatch"
                       style={{ background: color }}
                       onClick={() => setInkColor(color)}
-                      aria-label={`Ink color ${color}`}
+                      aria-label={`Use color ${color}`}
                     />
                   ))}
                 </div>
-              </div>
-              <label className="copje-field-label">Opacity: {opacity}%</label>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={opacity}
-                onChange={(event) => setOpacity(Number(event.target.value))}
-                className="copje-range"
-              />
-              <div className="copje-toolbar-grid">
-                <button type="button" className="copje-btn" onClick={applyInkColor}>
-                  <Palette size={14} />
-                  Apply ink
-                </button>
-                <button type="button" className="copje-btn" onClick={applyOpacity}>
-                  Apply opacity
-                </button>
-              </div>
-
-              <label className="copje-field-label mt-2">
+                <label className="copje-field-label">Opacity: {opacity}%</label>
                 <input
-                  type="checkbox"
-                  checked={distressedEnabled}
-                  onChange={async (event) => {
-                    const value = event.target.checked;
-                    const canvas = canvasRef.current;
-                    setDistressedEnabled(value);
-                    if (!canvas) return;
-                    const active = canvas.getActiveObject() as StampObject | null;
-                    if (!active || active.kind !== 'shape') return;
-                    applyDistressToShape(active, value);
-                    saveState();
-                  }}
+                  className="copje-range"
+                  type="range"
+                  min={10}
+                  max={100}
+                  value={opacity}
+                  onChange={(event) => setOpacity(Number(event.target.value))}
                 />
-                Distressed / grunge effect
-              </label>
-            </section>
-
-            <section className="copje-toolbar">
-              <h3>6) Preset Templates</h3>
-              <div className="copje-space-y">
-                <button type="button" className="copje-btn w-full" onClick={() => applyPreset('default')}>
-                  Default (basic)
-                </button>
-                <button type="button" className="copje-btn w-full" onClick={() => applyPreset('received-date')}>
-                  RECEIVED + date
-                </button>
-                <button type="button" className="copje-btn w-full" onClick={() => applyPreset('approved')}>
-                  APPROVED
-                </button>
-                <button type="button" className="copje-btn w-full" onClick={() => applyPreset('confidential')}>
-                  CONFIDENTIAL
-                </button>
-                <button type="button" className="copje-btn w-full" onClick={() => applyPreset('profile')}>
-                  Name + Title + Phone Number
-                </button>
-                <button type="button" className="copje-btn w-full" onClick={() => applyPreset('sdn')}>
-                  Company Sdn Bhd circular stamp
-                </button>
-                <button type="button" className="copje-btn w-full" onClick={() => applyPreset('official')}>
-                  Official circular stamp style
-                </button>
-              </div>
-            </section>
-
-            <section className="copje-toolbar">
-              <h3>7) Layers</h3>
-              <div className="copje-toolbar-grid">
-                <button type="button" className="copje-btn" onClick={duplicateActive} disabled={!activeObjectId}>
-                  Duplicate
-                </button>
-                <button type="button" className="copje-btn" onClick={removeActive} disabled={!activeObjectId}>
-                  Delete
-                </button>
-              </div>
-              <div className="copje-toolbar-grid mt-2">
-                <button type="button" className="copje-btn" onClick={undo} disabled={!canUndo}>
-                  Undo
-                </button>
-                <button type="button" className="copje-btn" onClick={redo} disabled={!canRedo}>
-                  Redo
-                </button>
-              </div>
-              <button type="button" className="copje-btn w-full" onClick={resetCanvas}>
-                Reset canvas
-              </button>
-            </section>
-
-            <section className="copje-toolbar">
-              <h3>8) Export</h3>
-              <div className="copje-toolbar-grid">
-                <button type="button" className="copje-btn" onClick={exportPNG}>
-                  <Download size={14} />
-                  PNG (2000x2000)
-                </button>
-                <button type="button" className="copje-btn" onClick={exportSVG}>
-                  SVG
-                </button>
-                <button type="button" className="copje-btn" onClick={copyPNG}>
-                  <Copy size={14} />
-                  Copy
-                </button>
-              </div>
-              <button type="button" className="copje-btn w-full" onClick={() => setMobileToolsOpen(false)}>
-                Done
-              </button>
-            </section>
-          </aside>
-
-          <section className="copje-canvas-frame">
-            <header className="copje-canvas-header">
-              <div>
-                <p className="copje-tool-kicker">Canvas stage</p>
-                <h2 className="copje-tool-title">Rubber stamp preview</h2>
-              </div>
-            </header>
-
-            <div className="copje-canvas-shell">
-              <div className="copje-canvas-frame-inner">
-                <div className="copje-canvas-ruler" />
-                <canvas ref={canvasHostRef} className="copje-canvas" width={canvasSize} height={canvasSize} />
-                <div className={`copje-guide x ${guides.x ? 'on' : ''}`} />
-                <div className={`copje-guide y ${guides.y ? 'on' : ''}`} />
-              </div>
-            </div>
-
-            {activeObjectType !== 'none' ? (
-              <p className="copje-status">
-                {`Editing: ${activeObjectType} ${activeObjectId ? `• ${activeObjectId}` : ''}`}
-              </p>
-            ) : null}
-            {status !== 'Ready' ? <p className="copje-status">{status}</p> : null}
-            {busy && <p className="copje-status">Working...</p>}
-          </section>
-
-          <aside className="copje-layer-panel">
-            <div className="copje-layer-header">
-              <p className="copje-tool-kicker">Layer stack</p>
-              <h2 className="copje-tool-title">Layers</h2>
-              <Layers size={15} />
-            </div>
-            <div className="copje-layer-list">
-              {canvasObjects.length === 0 ? <p className="copje-empty">No layers yet</p> : null}
-              {canvasObjects.map((entry) => {
-                const isActive = entry.id === activeObjectId;
-                return (
-                  <button
-                    type="button"
-                    key={entry.id}
-                    className={`copje-layer-item ${isActive ? 'active' : ''}`}
-                    onClick={() => jumpToTarget(entry.id)}
-                  >
-                    <span>{entry.label}</span>
-                    <span className="copje-layer-id">{entry.id}</span>
+                <div className="copje-toolbar-grid">
+                  <button className="copje-btn copje-btn-primary" onClick={() => addTextObject(false)}>
+                    Add Text
                   </button>
-                );
-              })}
-            </div>
-          </aside>
-        </section>
+                  <button className="copje-btn copje-btn-primary" onClick={() => addTextObject(true)}>
+                    Add Arc Text
+                  </button>
+                  <button className="copje-btn copje-btn-ghost" onClick={applyActiveText}>
+                    Update Selected Text
+                  </button>
+                  <button className="copje-btn copje-btn-ghost" onClick={applyInkToActive}>
+                    Apply Color
+                  </button>
+                </div>
+              </section>
 
-        <button
-          type="button"
-          className="copje-mobile-toggle lg:hidden"
-          onClick={() => setMobileToolsOpen(true)}
-        >
-          <Menu size={14} /> Tools
-        </button>
+            </section>
+          </section>
+        </section>
       </main>
 
       <footer className="copje-footer">
