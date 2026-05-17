@@ -117,7 +117,7 @@
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: 0.75rem;
   z-index: 30;
   border-radius: 1rem 1rem 0 0;
   transform: translateY(100%);
@@ -277,6 +277,7 @@
   order: 2;
   width: var(--canvas-box-width);
   max-width: min(var(--canvas-box-width), 100%);
+  position: relative;
 }
 
 .copje-canvas-toolbar-strip {
@@ -323,6 +324,92 @@
   color: #b1cffc;
 }
 
+.copje-text-style-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) 68px 30px 30px;
+  align-items: center;
+  gap: 0;
+  min-height: 38px;
+  overflow: hidden;
+  border-radius: 0.48rem;
+  border: 1px solid rgba(128, 167, 224, 0.28);
+  background: rgba(230, 235, 242, 0.96);
+}
+
+.copje-text-style-bar.has-flip {
+  grid-template-columns: minmax(0, 1.55fr) 68px 30px 30px 30px;
+}
+
+.copje-style-select,
+.copje-style-btn {
+  height: 38px;
+  border: 0;
+  border-right: 1px solid rgba(50, 62, 78, 0.12);
+  border-radius: 0;
+  background: transparent;
+  color: #111827;
+}
+
+.copje-style-select {
+  min-width: 0;
+  padding: 0 0.58rem;
+  font-size: 0.78rem;
+  outline: none;
+}
+
+.copje-style-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #6d7280;
+}
+
+.copje-style-btn.is-italic {
+  font-style: italic;
+}
+
+.copje-style-btn.is-active {
+  color: #111827;
+  background: rgba(12, 112, 232, 0.12);
+}
+
+.copje-panel-color-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 38px;
+  position: absolute;
+  left: -42px;
+  top: 0;
+  z-index: 2;
+  border: 1px solid rgba(128, 167, 224, 0.35);
+  border-radius: 0.52rem;
+  background: rgba(230, 235, 242, 0.96);
+  cursor: pointer;
+}
+
+.copje-panel-color-control input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.copje-panel-color-control span {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid rgba(17, 24, 39, 0.35);
+  box-shadow: inset 0 -3px 0 rgba(17, 24, 39, 0.22);
+}
+
 .copje-toolbar-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -365,6 +452,31 @@
 .copje-range {
   font-size: 0.84rem;
   padding: 0.52rem 0.62rem;
+}
+
+.copje-side-text-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.copje-side-flip-btn {
+  width: 20px;
+  height: 24px;
+  border: 0;
+  border-bottom: 2px solid rgba(232, 240, 255, 0.65);
+  background: transparent;
+  color: #d7e6ff;
+  padding: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.copje-side-flip-btn.is-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 .copje-textarea {
@@ -565,6 +677,8 @@
   gap: 0.6rem;
   text-align: left;
   font-size: 0.75rem;
+  cursor: grab;
+  user-select: none;
 }
 
 .copje-layer-item.active {
@@ -572,9 +686,44 @@
   box-shadow: inset 0 0 0 1px rgba(130, 199, 255, 0.28);
 }
 
+.copje-layer-item.is-dragging {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.copje-layer-item:active {
+  cursor: grabbing;
+}
+
 .copje-layer-id {
   color: #7fa5d3;
   font-size: 0.65rem;
+}
+
+.copje-layer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  flex: 0 0 auto;
+}
+
+.copje-layer-delete {
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(130, 199, 255, 0.22);
+  border-radius: 0.42rem;
+  background: rgba(4, 12, 28, 0.82);
+  color: #9fbce6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.copje-layer-delete:hover {
+  color: #ffffff;
+  border-color: rgba(255, 112, 112, 0.72);
+  background: rgba(112, 20, 28, 0.5);
 }
 
 .copje-empty {
@@ -608,10 +757,434 @@
   backdrop-filter: blur(4px);
 }
 
+.copje-desktop-toolbar,
+.copje-canvas-actions,
+.copje-bottom-bar {
+  display: none;
+}
+
+.copje-icon-btn {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(124, 165, 230, 0.28);
+  border-radius: 999px;
+  background: rgba(6, 15, 29, 0.93);
+  color: #e6efff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: 140ms ease;
+}
+
+.copje-icon-btn svg + svg {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  color: var(--accent-2);
+}
+
+.copje-icon-btn:hover {
+  border-color: rgba(126, 179, 255, 0.7);
+  transform: translateY(-1px);
+}
+
+.copje-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.copje-stamp-tool-btn {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(124, 165, 230, 0.28);
+  border-radius: 999px;
+  background: rgba(6, 15, 29, 0.93);
+  color: #d7e6ff;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  transition: 140ms ease;
+}
+
+.copje-stamp-tool-btn:hover {
+  border-color: rgba(126, 179, 255, 0.7);
+  transform: translateY(-1px);
+}
+
+.copje-stamp-symbol {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  display: block;
+  margin: 0 auto;
+}
+
+.copje-stamp-symbol::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 22px;
+  height: 22px;
+  border: 2px solid currentColor;
+  box-sizing: border-box;
+}
+
+.copje-stamp-symbol-letter {
+  position: absolute;
+  left: 10px;
+  top: 5px;
+  z-index: 1;
+  color: currentColor;
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 600;
+  font-family: Arial, sans-serif;
+}
+
+.copje-stamp-symbol-arc::before {
+  left: 3px;
+}
+
+.copje-stamp-symbol-arc .copje-stamp-symbol-letter {
+  left: 10px;
+  top: 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.copje-stamp-symbol-arc .copje-symbol-plus {
+  right: -1px;
+  bottom: 0;
+}
+
+.copje-stamp-symbol-text::before {
+  display: none;
+}
+
+.copje-stamp-symbol-text::after {
+  display: none;
+}
+
+.copje-stamp-symbol-text .copje-stamp-symbol-letter {
+  left: 7px;
+  top: 3px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.copje-symbol-plus {
+  position: absolute;
+  right: -1px;
+  bottom: 0;
+  z-index: 2;
+  width: 14px;
+  height: 14px;
+  color: var(--accent-2);
+  stroke-width: 2;
+}
+
+.shape-circle .copje-stamp-symbol::before {
+  border-radius: 999px;
+}
+
+.shape-oval .copje-stamp-symbol::before {
+  left: 3px;
+  top: 5px;
+  width: 22px;
+  height: 17px;
+  border-radius: 999px;
+}
+
+.shape-rectangle .copje-stamp-symbol::before {
+  left: 3px;
+  top: 5px;
+  width: 22px;
+  height: 18px;
+}
+
+.shape-triangle .copje-stamp-symbol::before {
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: currentColor;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.shape-triangle .copje-stamp-symbol::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  left: 6px;
+  width: 16px;
+  height: 16px;
+  background: var(--panel);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.shape-triangle .copje-stamp-symbol-arc .copje-stamp-symbol-letter {
+  left: 10px;
+  top: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.shape-oval .copje-stamp-symbol-arc .copje-stamp-symbol-letter,
+.shape-rectangle .copje-stamp-symbol-arc .copje-stamp-symbol-letter {
+  left: 10px;
+  top: 7px;
+}
+
+.copje-panel-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-bottom: 1px solid rgba(129, 169, 236, 0.22);
+}
+
+.copje-panel-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #d8e6ff;
+  padding: 0.72rem 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.copje-panel-tabs button.is-active {
+  color: #ffffff;
+  border-bottom-color: var(--accent);
+}
+
+.copje-layer-handle {
+  color: #86a4cf;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.copje-font-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px 40px 40px;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.copje-number-input,
+.copje-format-btn {
+  height: 40px;
+  border-radius: 0.58rem;
+  border: 1px solid rgba(128, 167, 224, 0.35);
+  background: #050d1f;
+  color: #e8f0ff;
+}
+
+.copje-number-input {
+  width: 100%;
+  padding: 0 0.45rem;
+  font-size: 0.84rem;
+}
+
+.copje-format-btn {
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.copje-format-btn.is-active {
+  border-color: rgba(129, 203, 255, 0.82);
+  color: #ffffff;
+  background: rgba(80, 134, 214, 0.34);
+}
+
+.copje-plate-size {
+  border: 1px solid rgba(128, 167, 224, 0.35);
+  border-radius: 0.7rem;
+  padding: 0.42rem 0.62rem;
+  background: rgba(6, 15, 29, 0.93);
+  color: #d8e6ff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.copje-plate-size strong {
+  color: var(--accent);
+  font-size: 1.25rem;
+  padding-inline: 0.2rem;
+}
+
+.copje-plate-size input {
+  width: 3.35rem;
+  height: 1.9rem;
+  border: 1px solid rgba(128, 167, 224, 0.35);
+  border-radius: 0.45rem;
+  background: #050d1f;
+  color: var(--accent);
+  font-size: 0.95rem;
+  font-weight: 800;
+  text-align: center;
+  outline: none;
+}
+
+.copje-export-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.copje-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(2, 6, 14, 0.62);
+}
+
+.copje-new-stamp-modal {
+  width: min(360px, calc(100vw - 1.5rem));
+  border: 1px solid rgba(118, 156, 222, 0.28);
+  border-radius: 0.5rem;
+  background: var(--panel);
+  color: var(--txt);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.copje-new-stamp-modal h2 {
+  margin: 0;
+  padding: 0.78rem 0.95rem;
+  border-bottom: 1px solid rgba(129, 169, 236, 0.22);
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.copje-stamp-shape-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.copje-stamp-shape-row {
+  min-height: 56px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #d8e6ff;
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.52rem 1.15rem;
+  text-align: left;
+  font-size: 0.96rem;
+}
+
+.copje-stamp-shape-row.is-active {
+  background: rgba(111, 176, 255, 0.12);
+  color: #ffffff;
+}
+
+.copje-new-stamp-tool-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+}
+
+.copje-stamp-dim-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  padding: 0 1.15rem 0.75rem 5.35rem;
+  background: rgba(111, 176, 255, 0.12);
+}
+
+.copje-stamp-dim-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.copje-stamp-dim-row input {
+  width: 100%;
+  border: 0;
+  border-bottom: 2px solid var(--accent);
+  background: transparent;
+  color: #ffffff;
+  min-height: 1.55rem;
+  padding: 0.12rem 0;
+  font-size: 0.86rem;
+  line-height: 1.35;
+  outline: none;
+}
+
+.copje-stamp-dim-row input[type='number']::-webkit-inner-spin-button,
+.copje-stamp-dim-row input[type='number']::-webkit-outer-spin-button {
+  width: 0.75rem;
+  height: 1.25rem;
+}
+
+.copje-new-stamp-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  padding: 1.2rem 2.85rem 1.45rem;
+}
+
 @media (min-width: 1024px) {
-  .copje-workspace-grid {
-    grid-template-columns: minmax(0, 320px) minmax(0, 1fr) minmax(0, 280px);
+  .copje-page {
+    --canvas-view-width: min(440px, 100%);
+    padding-bottom: 4.25rem;
+  }
+
+  .copje-shell {
+    width: min(1180px, calc(100% - 1.2rem));
+  }
+
+  .copje-desktop-toolbar {
     display: grid;
+    grid-template-columns: 180px minmax(0, 1fr) 180px;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.65rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid rgba(118, 156, 222, 0.24);
+    border-radius: 0.8rem 0.8rem 0 0;
+    background: var(--panel);
+  }
+
+  .copje-toolbar-actions {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+  }
+
+  .copje-back-btn,
+  .copje-new-btn {
+    min-height: 44px;
+  }
+
+  .copje-workspace-grid {
+    grid-template-columns: minmax(230px, 250px) minmax(420px, 1fr) minmax(280px, 300px);
+    display: grid;
+    gap: 0.75rem;
+    margin-top: 0;
+    padding: 0.75rem;
+    border: 1px solid rgba(118, 156, 222, 0.24);
+    border-top: 0;
+    background: rgba(8, 17, 34, 0.42);
   }
 
   .copje-tool-drawer {
@@ -637,20 +1210,89 @@
     display: block;
   }
 
+  .copje-workspace-grid > .copje-layer-panel {
+    grid-column: 1;
+    grid-row: 1 / span 3;
+    min-height: 440px;
+    padding: 0;
+    overflow: hidden;
+  }
+
   .copje-mobile-toggle {
     display: none;
   }
 
   .copje-main-column {
     grid-column: 2;
-    justify-self: stretch;
-    width: var(--canvas-box-width);
-    max-width: min(var(--canvas-box-width), 100%);
+    display: contents;
+  }
+
+  .copje-canvas-frame-inner {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: center;
+    margin: 0;
+    width: var(--canvas-view-width);
+    height: var(--canvas-view-width);
+    min-width: 0;
+    min-height: 0;
+    max-width: 100%;
+    border: 1px solid rgba(129, 169, 236, 0.18);
+  }
+
+  .copje-canvas-actions {
+    grid-column: 2;
+    grid-row: 2;
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+    justify-self: center;
+    width: min(440px, 100%);
+    padding: 0.58rem;
+    border: 1px solid rgba(118, 156, 222, 0.24);
+    border-radius: 0.8rem;
+    background: var(--panel);
   }
 
   .copje-tool-content {
-    width: var(--canvas-box-width);
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    width: auto;
     max-width: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  .copje-tool-content .copje-toolbar {
+    min-height: 0;
+  }
+
+  .copje-shape-selector-popover {
+    position: absolute;
+    top: calc(100% + 0.45rem);
+    left: 0;
+    transform: none;
+  }
+
+  .copje-bottom-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid rgba(118, 156, 222, 0.24);
+    border-top: 0;
+    border-radius: 0 0 0.8rem 0.8rem;
+    background: rgba(8, 17, 34, 0.42);
+  }
+
+  .copje-bottom-bar .copje-status {
+    margin: 0;
+  }
+
+  .copje-export-actions {
+    justify-content: flex-end;
   }
 }
 
