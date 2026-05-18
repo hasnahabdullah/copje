@@ -410,6 +410,7 @@ const createPerimeterText = ({
     angle: number,
     maxWidth: number,
     flip = false,
+    sideIndex = 0,
   ) => {
     const sideText = new fabric.Text(label, {
       fontSize,
@@ -431,6 +432,12 @@ const createPerimeterText = ({
     if (naturalWidth > maxWidth) {
       sideText.scaleX = (flip ? -1 : 1) * (maxWidth / naturalWidth);
     }
+    (sideText as any).selectionWidth = naturalWidth * Math.abs(Number(sideText.scaleX || 1));
+    (sideText as any).selectionHeight = fontSize * 1.02;
+    (sideText as any).selectionTopOffset =
+      shape === 'triangle' && sideIndex === 2
+        ? fontSize * 1.6
+        : 0;
     textObjects.push(sideText);
   };
 
@@ -461,9 +468,9 @@ const createPerimeterText = ({
     });
   } else if (shape === 'rectangle') {
     addSideText(normalizedSideTexts[0], 0, -boxHeight / 2, 0, boxWidth * 0.92, normalizedSideFlips[0]);
-    addSideText(normalizedSideTexts[1], boxWidth / 2, 0, 90, boxHeight * 0.92, normalizedSideFlips[1]);
-    addSideText(normalizedSideTexts[2], 0, boxHeight / 2, 180, boxWidth * 0.92, normalizedSideFlips[2]);
-    addSideText(normalizedSideTexts[3], -boxWidth / 2, 0, -90, boxHeight * 0.92, normalizedSideFlips[3]);
+    addSideText(normalizedSideTexts[1], boxWidth / 2, 0, 90, boxHeight * 0.92, normalizedSideFlips[1], 1);
+    addSideText(normalizedSideTexts[2], 0, boxHeight / 2, 180, boxWidth * 0.92, normalizedSideFlips[2], 2);
+    addSideText(normalizedSideTexts[3], -boxWidth / 2, 0, -90, boxHeight * 0.92, normalizedSideFlips[3], 3);
   } else {
     const points =
       [
@@ -478,13 +485,25 @@ const createPerimeterText = ({
     ].forEach(([point, next], index) => {
       const dx = next.x - point.x;
       const dy = next.y - point.y;
+      const length = Math.max(1, Math.hypot(dx, dy));
+      const midpoint = {
+        x: point.x + dx / 2,
+        y: point.y + dy / 2,
+      };
+      if (index < 2) {
+        const inwardOffset = fontSize * 0.42;
+        const inwardSign = 1;
+        midpoint.x += (-dy / length) * inwardOffset * inwardSign;
+        midpoint.y += (dx / length) * inwardOffset * inwardSign;
+      }
       addSideText(
         normalizedSideTexts[index],
-        point.x + dx / 2,
-        point.y + dy / 2,
+        midpoint.x,
+        midpoint.y,
         (Math.atan2(dy, dx) * 180) / Math.PI,
-        Math.hypot(dx, dy) * 0.82,
+        length * 0.82,
         normalizedSideFlips[index],
+        index,
       );
     });
   }
@@ -953,28 +972,128 @@ export default function CopJeClient() {
     const textChildren = ((target as any)._objects || []).filter((child: fabric.Object) => child instanceof fabric.Text);
     if (!textChildren.length) return null;
 
+    const childBoxes: Array<{ left: number; top: number; right: number; bottom: number }> = textChildren.map((child: fabric.Object) => {
+      const width = Math.max(1, Number(child.width || 1) * Math.abs(Number(child.scaleX || 1)));
+      const height = Math.max(1, Number(child.height || 1) * Math.abs(Number(child.scaleY || 1)));
+      const left = Number(child.left || 0) - width / 2;
+      const top = Number(child.top || 0) - height / 2;
+      return {
+        left,
+        top,
+        right: left + width,
+        bottom: top + height,
+      };
+    });
+    const minLeft = Math.min(...childBoxes.map((box) => box.left));
+    const minTop = Math.min(...childBoxes.map((box) => box.top));
+    const maxRight = Math.max(...childBoxes.map((box) => box.right));
+    const maxBottom = Math.max(...childBoxes.map((box) => box.bottom));
+    const textWidth = Math.max(1, maxRight - minLeft + padding * 2);
+    const textHeight = Math.max(1, maxBottom - minTop + padding * 2);
+    const characterMetrics: Array<{ x: number; y: number; halfSize: number }> = textChildren.map((child: fabric.Object) => {
+      const width = Math.max(1, Number(child.width || 1) * Math.abs(Number(child.scaleX || 1)));
+      const height = Math.max(1, Number(child.height || 1) * Math.abs(Number(child.scaleY || 1)));
+      return {
+        x: Number(child.left || 0),
+        y: Number(child.top || 0),
+        halfSize: Math.max(width, height) / 2,
+      };
+    });
+    const textThickness = Math.max(...characterMetrics.map((metric) => metric.halfSize)) + padding;
+    const textOutlineBase = {
+      fill: 'rgba(0,0,0,0)',
+      stroke: '#38bdf8',
+      strokeWidth: 1.5,
+      strokeDashArray: [6, 4],
+      selectable: false,
+      evented: false,
+      hasControls: false,
+      hasBorders: false,
+      objectCaching: false,
+      excludeFromExport: true,
+      originX: 'center',
+      originY: 'center',
+    };
+
+    if (target.shapeKind === 'circle') {
+      const characterRadii = characterMetrics.map((metric) => Math.hypot(metric.x, metric.y));
+      const outerRadius = Math.max(...characterRadii.map((radius) => radius + textThickness));
+      const innerRadius = Math.max(1, Math.min(...characterRadii.map((radius) => radius - textThickness)));
+      return new fabric.Group([
+        new fabric.Circle({
+          ...textOutlineBase,
+          left: 0,
+          top: 0,
+          radius: outerRadius,
+        } as any),
+        new fabric.Circle({
+          ...textOutlineBase,
+          left: 0,
+          top: 0,
+          radius: innerRadius,
+        } as any),
+      ], {
+        left: target.left,
+        top: target.top,
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
+        objectCaching: false,
+        excludeFromExport: true,
+        originX: 'center',
+        originY: 'center',
+        angle: target.angle || 0,
+      } as any);
+    }
+
+    if (target.shapeKind === 'oval') {
+      const frameRx = Math.max(1, Number(target.width || textWidth) / 2);
+      const frameRy = Math.max(1, Number(target.height || textHeight) / 2);
+      const textBand = Math.max(
+        padding,
+        ...textChildren.map((child: fabric.Object) => (Number(child.height || 1) * Math.abs(Number(child.scaleY || 1))) / 2 + padding),
+      );
+      const outerRx = Math.max(1, frameRx - textBand * 0.05);
+      const outerRy = Math.max(1, frameRy - textBand * 0.05);
+      const innerRx = Math.max(1, frameRx - textBand * 1.7);
+      const innerRy = Math.max(1, frameRy - textBand * 1.7);
+      return new fabric.Group([
+        new fabric.Ellipse({
+          ...textOutlineBase,
+          left: 0,
+          top: 0,
+          rx: outerRx,
+          ry: outerRy,
+        } as any),
+        new fabric.Ellipse({
+          ...textOutlineBase,
+          left: 0,
+          top: 0,
+          rx: innerRx,
+          ry: innerRy,
+        } as any),
+      ], {
+        left: target.left,
+        top: target.top,
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
+        objectCaching: false,
+        excludeFromExport: true,
+        originX: 'center',
+        originY: 'center',
+        angle: target.angle || 0,
+      } as any);
+    }
+
     if (target.shapeKind !== 'triangle' && target.shapeKind !== 'rectangle') {
-      const childBoxes: Array<{ left: number; top: number; right: number; bottom: number }> = textChildren.map((child: fabric.Object) => {
-        const width = Math.max(1, Number(child.width || 1) * Math.abs(Number(child.scaleX || 1)));
-        const height = Math.max(1, Number(child.height || 1) * Math.abs(Number(child.scaleY || 1)));
-        const left = Number(child.left || 0) - width / 2;
-        const top = Number(child.top || 0) - height / 2;
-        return {
-          left,
-          top,
-          right: left + width,
-          bottom: top + height,
-        };
-      });
-      const minLeft = Math.min(...childBoxes.map((box) => box.left));
-      const minTop = Math.min(...childBoxes.map((box) => box.top));
-      const maxRight = Math.max(...childBoxes.map((box) => box.right));
-      const maxBottom = Math.max(...childBoxes.map((box) => box.bottom));
       return new fabric.Rect({
         left: Number(target.left || 0) + minLeft - padding,
         top: Number(target.top || 0) + minTop - padding,
-        width: maxRight - minLeft + padding * 2,
-        height: maxBottom - minTop + padding * 2,
+        width: textWidth,
+        height: textHeight,
         fill: 'rgba(0,0,0,0)',
         stroke: '#38bdf8',
         strokeWidth: 1.5,
@@ -992,11 +1111,17 @@ export default function CopJeClient() {
     }
 
     const outlinePieces = textChildren.map((child: fabric.Object) => {
-      const width = Math.max(1, Number(child.width || 1) * Math.abs(Number(child.scaleX || 1)) + padding * 2);
-      const height = Math.max(1, Number(child.height || 1) * Math.abs(Number(child.scaleY || 1)) + padding * 2);
+      const isTriangleText = target.shapeKind === 'triangle';
+      child.setCoords();
+      const sidePaddingX = isTriangleText ? 4 : padding;
+      const sidePaddingY = isTriangleText ? 3 : padding;
+      const measuredWidth = Number((child as any).selectionWidth ?? (child.width || 1) * Math.abs(Number(child.scaleX || 1)));
+      const measuredHeight = Number((child as any).selectionHeight ?? (child.height || 1) * Math.abs(Number(child.scaleY || 1)));
+      const width = Math.max(1, measuredWidth + sidePaddingX * 2);
+      const height = Math.max(1, measuredHeight + sidePaddingY * 2);
       return new fabric.Rect({
         left: Number(child.left || 0),
-        top: Number(child.top || 0),
+        top: Number(child.top || 0) + Number((child as any).selectionTopOffset || 0),
         width,
         height,
         angle: Number(child.angle || 0),
