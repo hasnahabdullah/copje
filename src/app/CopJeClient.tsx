@@ -58,6 +58,8 @@ type StampObject = fabric.Object & {
   shapeSizeValue?: number;
   shapeOuterWidth?: number;
   shapeOuterHeight?: number;
+  shapeBaseWidth?: number;
+  shapeBaseHeight?: number;
   shapeMmWidth?: number;
   shapeMmHeight?: number;
   shapeStrokeWidth?: number;
@@ -72,7 +74,7 @@ const FONT_CHOICES: FontChoice[] = ['Arial', 'Times', 'Montserrat', 'Bebas Neue'
 const COLOR_PRESETS = ['#111111', '#2d62ff', '#d7263d', '#2c8a4b'];
 const CANVAS_BG_PRESETS = ['#ffffff', '#f3f7ff', '#fff7ef', '#edf6ff', '#f1f5f0'];
 const DATE_FORMAT_OPTIONS: DateFormat[] = ['DD/MM/YYYY', 'MM-DD-YYYY', 'DD.MM.YYYY', 'YYYY-MM-DD'];
-const STAMP_JSON_EXTRAS = ['uid', 'layerNumber', 'kind', 'shapeKind', 'textRadiusValue', 'textSpacingValue', 'textStartPointValue', 'textFlipHorizontal', 'textSideValues', 'textSideFlips', 'shapeSizeValue', 'shapeOuterWidth', 'shapeOuterHeight', 'shapeMmWidth', 'shapeMmHeight', 'shapeStrokeWidth', 'shapeLineBreak', 'borderStyle', 'sourceText', 'curveAngle', 'isDistressed'];
+const STAMP_JSON_EXTRAS = ['uid', 'layerNumber', 'kind', 'shapeKind', 'textRadiusValue', 'textSpacingValue', 'textStartPointValue', 'textFlipHorizontal', 'textSideValues', 'textSideFlips', 'shapeSizeValue', 'shapeOuterWidth', 'shapeOuterHeight', 'shapeBaseWidth', 'shapeBaseHeight', 'shapeMmWidth', 'shapeMmHeight', 'shapeStrokeWidth', 'shapeLineBreak', 'borderStyle', 'sourceText', 'curveAngle', 'isDistressed'];
 
 const BASE_CANVAS = 560;
 const MOBILE_CANVAS_VIEW_MAX = 240;
@@ -97,6 +99,7 @@ const INNER_SHAPE_TEXT_FONT_SIZE = 36;
 const SHAPE_CANVAS_MARGIN = 14;
 const MAX_HISTORY = 60;
 const SNAP_CENTER = 12;
+const TRIANGLE_HEIGHT_RATIO = Math.sqrt(3) / 2;
 
 const mapFontFamily = (font: FontChoice) => {
   if (font === 'Times') return 'Times New Roman';
@@ -278,7 +281,7 @@ const getShapeRingPath = (shape: ShapeChoice, outerWidth: number, outerHeight: n
 
 const getTriangleRingPath = (outerWidth: number, outerHeight: number, strokeWidth: number, lineBreakValue = 0) => {
   const safeOuterWidth = Math.max(1, outerWidth);
-  const safeOuterHeight = Math.max(1, outerHeight);
+  const safeOuterHeight = Math.max(1, safeOuterWidth * TRIANGLE_HEIGHT_RATIO);
   const safeStroke = Math.max(0, Math.min(strokeWidth, safeOuterWidth / 2 - 1, safeOuterHeight / 2 - 1));
   const safeLineBreak = Math.max(0, Math.round(lineBreakValue));
   const outer = [
@@ -286,58 +289,37 @@ const getTriangleRingPath = (outerWidth: number, outerHeight: number, strokeWidt
     { x: safeOuterWidth / 2, y: safeOuterHeight / 2 },
     { x: -safeOuterWidth / 2, y: safeOuterHeight / 2 },
   ];
+  const centroidY = safeOuterHeight / 6;
 
-  const signedArea = outer.reduce((sum, point, index) => {
-    const next = outer[(index + 1) % outer.length];
-    return sum + point.x * next.y - next.x * point.y;
-  }, 0);
-  const direction = signedArea >= 0 ? 1 : -1;
-  const offsetLines = outer.map((point, index) => {
-    const next = outer[(index + 1) % outer.length];
-    const dx = next.x - point.x;
-    const dy = next.y - point.y;
-    const length = Math.hypot(dx, dy) || 1;
-    const normal = { x: (-dy / length) * direction, y: (dx / length) * direction };
-    return {
-      point: { x: point.x + normal.x * safeStroke, y: point.y + normal.y * safeStroke },
-      direction: { x: dx, y: dy },
-    };
-  });
-  const inner = offsetLines.map((line, index) => {
-    const previous = offsetLines[(index + offsetLines.length - 1) % offsetLines.length];
-    const cross = previous.direction.x * line.direction.y - previous.direction.y * line.direction.x || 1;
-    const dx = line.point.x - previous.point.x;
-    const dy = line.point.y - previous.point.y;
-    const t = (dx * line.direction.y - dy * line.direction.x) / cross;
-    return {
-      x: previous.point.x + previous.direction.x * t,
-      y: previous.point.y + previous.direction.y * t,
-    };
-  });
-
-  if (safeLineBreak > 0) {
-    const inset = safeStroke / 2;
-    const dashed = [
-      { x: 0, y: -safeOuterHeight / 2 + inset },
-      { x: safeOuterWidth / 2 - inset, y: safeOuterHeight / 2 - inset },
-      { x: -safeOuterWidth / 2 + inset, y: safeOuterHeight / 2 - inset },
-    ];
+  if (safeLineBreak <= 0) {
+    const inradius = safeOuterHeight / 3;
+    const inwardDistance = Math.min(safeStroke, Math.max(0, inradius - 1));
+    const innerScale = Math.max(0.05, (inradius - inwardDistance) / Math.max(1, inradius));
+    const innerSimilar = outer.map((point) => ({
+      x: point.x * innerScale,
+      y: centroidY + (point.y - centroidY) * innerScale,
+    }));
     return [
-      ['M', dashed[0].x, dashed[0].y],
-      ['L', dashed[1].x, dashed[1].y],
-      ['L', dashed[2].x, dashed[2].y],
+      ['M', outer[0].x, outer[0].y],
+      ['L', outer[1].x, outer[1].y],
+      ['L', outer[2].x, outer[2].y],
+      ['Z'],
+      ['M', innerSimilar[2].x, innerSimilar[2].y],
+      ['L', innerSimilar[1].x, innerSimilar[1].y],
+      ['L', innerSimilar[0].x, innerSimilar[0].y],
       ['Z'],
     ];
   }
-
+  const inset = safeStroke / 2;
+  const dashed = [
+    { x: 0, y: -safeOuterHeight / 2 + inset },
+    { x: safeOuterWidth / 2 - inset, y: safeOuterHeight / 2 - inset },
+    { x: -safeOuterWidth / 2 + inset, y: safeOuterHeight / 2 - inset },
+  ];
   return [
-    ['M', outer[0].x, outer[0].y],
-    ['L', outer[1].x, outer[1].y],
-    ['L', outer[2].x, outer[2].y],
-    ['Z'],
-    ['M', inner[2].x, inner[2].y],
-    ['L', inner[1].x, inner[1].y],
-    ['L', inner[0].x, inner[0].y],
+    ['M', dashed[0].x, dashed[0].y],
+    ['L', dashed[1].x, dashed[1].y],
+    ['L', dashed[2].x, dashed[2].y],
     ['Z'],
   ];
 };
@@ -436,7 +418,7 @@ const createPerimeterText = ({
     (sideText as any).selectionHeight = fontSize * 1.02;
     (sideText as any).selectionTopOffset =
       shape === 'triangle' && sideIndex === 2
-        ? fontSize * 1.6
+        ? fontSize * 0.1
         : 0;
     textObjects.push(sideText);
   };
@@ -721,7 +703,7 @@ export default function CopJeClient() {
   const projectInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const ignoreHistoryRef = useRef(false);
-  const selectionOutlineRef = useRef<fabric.Object | null>(null);
+  const selectionOutlineRef = useRef<fabric.Object[]>([]);
   const distressMapRef = useRef(new Map<string, fabric.Object>());
   const historyRef = useRef<{ past: string[]; future: string[] }>({
     past: [],
@@ -959,11 +941,15 @@ export default function CopJeClient() {
 
   const removeSelectionOutline = () => {
     const canvas = canvasRef.current;
-    const outline = selectionOutlineRef.current;
-    selectionOutlineRef.current = null;
-    if (!canvas || !outline || !canvas.getObjects().includes(outline)) return;
+    const outlines = selectionOutlineRef.current;
+    selectionOutlineRef.current = [];
+    if (!canvas || !outlines.length) return;
     ignoreHistoryRef.current = true;
-    canvas.remove(outline);
+    outlines.forEach((outline) => {
+      if (canvas.getObjects().includes(outline)) {
+        canvas.remove(outline);
+      }
+    });
     ignoreHistoryRef.current = false;
     canvas.requestRenderAll();
   };
@@ -1140,6 +1126,26 @@ export default function CopJeClient() {
       } as any);
     });
 
+    if (target.shapeKind === 'triangle') {
+      const targetAngle = Number(target.angle || 0);
+      const targetRadians = (targetAngle * Math.PI) / 180;
+      const cos = Math.cos(targetRadians);
+      const sin = Math.sin(targetRadians);
+      const targetLeft = Number(target.left || 0);
+      const targetTop = Number(target.top || 0);
+
+      return outlinePieces.map((piece: fabric.Object) => {
+        const localLeft = Number(piece.left || 0);
+        const localTop = Number(piece.top || 0);
+        piece.set({
+          left: targetLeft + localLeft * cos - localTop * sin,
+          top: targetTop + localLeft * sin + localTop * cos,
+          angle: Number(piece.angle || 0) + targetAngle,
+        });
+        return piece;
+      });
+    }
+
     return new fabric.Group(outlinePieces, {
       left: target.left,
       top: target.top,
@@ -1183,41 +1189,41 @@ export default function CopJeClient() {
       originY: 'center',
       angle: target.angle || 0,
     };
-    let outline: fabric.Object;
+    let outlines: fabric.Object[];
     const textOutline = target.kind === 'arc-text' ? createTextSelectionOutline(target, 4) : null;
     if (textOutline) {
-      outline = textOutline;
+      outlines = Array.isArray(textOutline) ? textOutline : [textOutline];
     } else if (target.shapeKind === 'circle') {
       const diameter = Math.max(frameWidth, frameHeight) + padding * 2;
-      outline = new fabric.Circle({
+      outlines = [new fabric.Circle({
         ...outlineBase,
         radius: diameter / 2,
-      } as any);
+      } as any)];
     } else if (target.shapeKind === 'oval') {
-      outline = new fabric.Ellipse({
+      outlines = [new fabric.Ellipse({
         ...outlineBase,
         rx: frameWidth / 2 + padding,
         ry: frameHeight / 2 + padding,
-      } as any);
+      } as any)];
     } else if (target.shapeKind === 'rectangle') {
-      outline = new fabric.Rect({
+      outlines = [new fabric.Rect({
         ...outlineBase,
         width: frameWidth + padding * 2,
         height: frameHeight + padding * 2,
-      } as any);
+      } as any)];
     } else if (target.shapeKind === 'triangle') {
       const width = frameWidth + padding * 2;
       const height = frameHeight + padding * 2;
-      outline = new fabric.Polygon(
+      outlines = [new fabric.Polygon(
         [
           { x: 0, y: -height / 2 },
           { x: width / 2, y: height / 2 },
           { x: -width / 2, y: height / 2 },
         ],
         outlineBase as any,
-      );
+      )];
     } else {
-      outline = new fabric.Rect({
+      outlines = [new fabric.Rect({
         ...outlineBase,
         left: bounds.left - padding,
         top: bounds.top - padding,
@@ -1225,11 +1231,11 @@ export default function CopJeClient() {
         height: bounds.height + padding * 2,
         originX: 'left',
         originY: 'top',
-      } as any);
+      } as any)];
     }
-    selectionOutlineRef.current = outline;
+    selectionOutlineRef.current = outlines;
     ignoreHistoryRef.current = true;
-    canvas.add(outline);
+    outlines.forEach((outline) => canvas.add(outline));
     canvas.setActiveObject(target);
     ignoreHistoryRef.current = false;
     canvas.requestRenderAll();
@@ -1237,17 +1243,17 @@ export default function CopJeClient() {
 
   const withSelectionOutlineHidden = <T,>(callback: () => T) => {
     const canvas = canvasRef.current;
-    const outline = selectionOutlineRef.current;
-    const previousVisible = outline?.visible;
-    if (outline) {
+    const outlines = selectionOutlineRef.current;
+    const previousVisible = outlines.map((outline) => outline.visible);
+    outlines.forEach((outline) => {
       outline.visible = false;
-      canvas?.requestRenderAll();
-    }
+    });
+    if (outlines.length) canvas?.requestRenderAll();
     const result = callback();
-    if (outline) {
-      outline.visible = previousVisible ?? true;
-      canvas?.requestRenderAll();
-    }
+    outlines.forEach((outline, index) => {
+      outline.visible = previousVisible[index] ?? true;
+    });
+    if (outlines.length) canvas?.requestRenderAll();
     return result;
   };
 
@@ -1270,7 +1276,7 @@ export default function CopJeClient() {
       return { width: size, height: Math.max(40, size * 0.62) };
     }
     if (shape === 'triangle') {
-      return { width: size, height: Math.max(40, size * 0.866) };
+      return { width: size, height: Math.max(40, size * TRIANGLE_HEIGHT_RATIO) };
     }
     return { width: size, height: size };
   };
@@ -1475,9 +1481,11 @@ export default function CopJeClient() {
   };
 
   const setShapeGeometryInsideOuterBox = (target: StampObject, outerWidth: number, outerHeight: number, strokeWidth: number) => {
+    const canonicalOuterWidth = target.shapeKind === 'triangle' ? Math.max(1, outerWidth) : outerWidth;
+    const canonicalOuterHeight = target.shapeKind === 'triangle' ? canonicalOuterWidth * TRIANGLE_HEIGHT_RATIO : outerHeight;
     const safeStroke = Math.max(0, Math.round(strokeWidth));
-    const innerWidth = Math.max(1, outerWidth - safeStroke);
-    const innerHeight = Math.max(1, outerHeight - safeStroke);
+    const innerWidth = Math.max(1, canonicalOuterWidth - safeStroke);
+    const innerHeight = Math.max(1, canonicalOuterHeight - safeStroke);
     const centerX = target.left;
     const centerY = target.top;
 
@@ -1505,10 +1513,8 @@ export default function CopJeClient() {
     const pathTarget = target as StampObject;
     if (pathTarget.kind === 'shape' && pathTarget.shapeKind && target instanceof fabric.Path) {
       const dashedTriangle = pathTarget.shapeKind === 'triangle' && lineBreak > 0;
+      (target as any)._setPath(getShapeRingPath(pathTarget.shapeKind, canonicalOuterWidth, canonicalOuterHeight, safeStroke, lineBreak), false);
       target.set({
-        path: getShapeRingPath(pathTarget.shapeKind, outerWidth, outerHeight, safeStroke, lineBreak),
-        width: outerWidth,
-        height: outerHeight,
         fill: dashedTriangle ? 'rgba(0,0,0,0)' : inkColor,
         stroke: dashedTriangle ? inkColor : 'rgba(0,0,0,0)',
         strokeWidth: dashedTriangle ? safeStroke : 0,
@@ -1528,22 +1534,34 @@ export default function CopJeClient() {
       originX: 'center',
       originY: 'center',
     });
-    target.shapeOuterWidth = outerWidth;
-    target.shapeOuterHeight = outerHeight;
+    target.shapeOuterWidth = canonicalOuterWidth;
+    target.shapeOuterHeight = canonicalOuterHeight;
+    target.shapeBaseWidth = target.shapeBaseWidth || canonicalOuterWidth;
+    target.shapeBaseHeight = target.shapeBaseHeight || canonicalOuterHeight;
     target.setCoords();
   };
 
   const applyShapeSize = (target: StampObject, requestedSize = shapeWidth) => {
     const normalized = clamp(Math.round(requestedSize), SHAPE_CONTROL_MIN, SHAPE_CONTROL_MAX);
     const visualSize = Math.max(1, (normalized / SHAPE_CONTROL_MAX) * getMaxShapeVisualSize(target));
+    const previousCentroidY =
+      target.shapeKind === 'triangle'
+        ? Number(target.top || 0) + Number(target.shapeOuterHeight || target.getBoundingRect().height || visualSize * TRIANGLE_HEIGHT_RATIO) / 6
+        : null;
     const currentOuterWidth = target.shapeOuterWidth || visualSize;
     const currentOuterHeight = target.shapeOuterHeight || visualSize;
-    const ratio = currentOuterWidth > 0 && currentOuterHeight > 0 ? currentOuterWidth / currentOuterHeight : 1;
+    const baseWidth = target.shapeKind === 'triangle' ? target.shapeBaseWidth || currentOuterWidth || visualSize : currentOuterWidth;
+    const baseHeight = target.shapeKind === 'triangle' ? target.shapeBaseHeight || baseWidth * TRIANGLE_HEIGHT_RATIO : currentOuterHeight;
+    const ratio = baseWidth > 0 && baseHeight > 0 ? baseWidth / baseHeight : 1;
     const outerWidth = ratio >= 1 ? visualSize : visualSize * ratio;
     const outerHeight = ratio >= 1 ? visualSize / ratio : visualSize;
     setShapeGeometryInsideOuterBox(target, outerWidth, outerHeight, Number(target.shapeStrokeWidth ?? target.strokeWidth ?? borderWidth));
     target.shapeSizeValue = normalized;
-    fitShapeToCanvas(target, true);
+    fitShapeToCanvas(target, target.shapeKind !== 'triangle');
+    if (target.shapeKind === 'triangle' && previousCentroidY !== null) {
+      target.top = previousCentroidY - Number(target.shapeOuterHeight || outerHeight) / 6;
+      target.setCoords();
+    }
     setShapeWidth(normalized);
     setShapeHeight(normalized);
   };
@@ -1643,10 +1661,13 @@ export default function CopJeClient() {
     const pathShape = target as StampObject;
     if (pathShape.kind === 'shape' && pathShape.shapeKind && target instanceof fabric.Path) {
       const outerWidth = pathShape.shapeOuterWidth || pathShape.getBoundingRect().width || NEW_STAMP_SIZE;
-      const outerHeight = pathShape.shapeOuterHeight || pathShape.getBoundingRect().height || Math.round(NEW_STAMP_SIZE * 0.866);
+      const outerHeight =
+        pathShape.shapeKind === 'triangle'
+          ? outerWidth * TRIANGLE_HEIGHT_RATIO
+          : pathShape.shapeOuterHeight || pathShape.getBoundingRect().height || Math.round(NEW_STAMP_SIZE * TRIANGLE_HEIGHT_RATIO);
       const dashedTriangle = pathShape.shapeKind === 'triangle' && nextLineBreak > 0;
+      (target as any)._setPath(getShapeRingPath(pathShape.shapeKind, outerWidth, outerHeight, nextStrokeWidth, nextLineBreak), false);
       target.set({
-        path: getShapeRingPath(pathShape.shapeKind, outerWidth, outerHeight, nextStrokeWidth, nextLineBreak),
         fill: dashedTriangle ? 'rgba(0,0,0,0)' : nextColor,
         stroke: dashedTriangle ? nextColor : 'rgba(0,0,0,0)',
         strokeWidth: dashedTriangle ? nextStrokeWidth : 0,
@@ -1994,7 +2015,7 @@ export default function CopJeClient() {
     }
     if (shape === 'triangle') {
       const side = requestedSize || 360;
-      const triangleHeight = Math.round(side * 0.866);
+      const triangleHeight = Math.round(side * TRIANGLE_HEIGHT_RATIO);
       shapeObject = new fabric.Path(getTriangleRingPath(side, triangleHeight, effectiveStrokeWidth, effectiveLineBreak) as any, {
         uid: toId(),
         kind: 'shape',
@@ -2009,6 +2030,8 @@ export default function CopJeClient() {
       }) as StampObject;
       shapeObject.shapeOuterWidth = side;
       shapeObject.shapeOuterHeight = triangleHeight;
+      shapeObject.shapeBaseWidth = side;
+      shapeObject.shapeBaseHeight = triangleHeight;
     }
     if (shape === 'oval') {
       const width = requestedWidth || 440;
@@ -2045,7 +2068,7 @@ export default function CopJeClient() {
       (shapeObject as StampObject).shapeOuterWidth = requestedSize || requestedWidth || displayedSize;
       (shapeObject as StampObject).shapeOuterHeight =
         shape === 'triangle' && requestedSize
-          ? Math.round(requestedSize * 0.866)
+          ? Math.round(requestedSize * TRIANGLE_HEIGHT_RATIO)
           : requestedSize || requestedHeight || displayedSize;
       const mmDimensions = style?.mm || dimensions;
       (shapeObject as StampObject).shapeMmWidth = mmDimensions.size || mmDimensions.width || displayedSize;
@@ -2056,6 +2079,15 @@ export default function CopJeClient() {
       applyShapeSize(shapeObject, displayedSize);
     } else {
       applyShapeSize(shapeObject, shapeWidth);
+    }
+    if ((shapeObject as StampObject).shapeKind === 'triangle') {
+      shapeObject.set({
+        left: centerX,
+        top: centerY,
+        originX: 'center',
+        originY: 'center',
+      });
+      shapeObject.setCoords();
     }
     addLayerBelowCurrent(shapeObject);
     canvas.setActiveObject(shapeObject);
@@ -2293,13 +2325,22 @@ export default function CopJeClient() {
     if (!active || active.kind !== 'arc-text' || !active.shapeKind) return;
 
     const nextRadius = getTextRadiusForTarget(nextValues.radius ?? textRadius);
+    const previousFrame = getIndependentTextFrame(getTextRadiusForTarget(active.textRadiusValue), active.shapeKind);
+    const previousCentroidY =
+      active.shapeKind === 'triangle'
+        ? Number(active.top || canvas.height / 2) + previousFrame.height / 6
+        : null;
     const textFrame = getIndependentTextFrame(nextRadius, active.shapeKind);
+    const nextTop =
+      active.shapeKind === 'triangle' && previousCentroidY !== null
+        ? previousCentroidY - textFrame.height / 6
+        : active.top || canvas.height / 2;
     setTextRadius(nextRadius);
     const rebuilt = createPerimeterText({
       text: active.sourceText || textValue || getShapeTextLabel(active.shapeKind),
       shape: active.shapeKind,
       left: active.left || canvas.width / 2,
-      top: active.top || canvas.height / 2,
+      top: nextTop,
       width: textFrame.width,
       height: textFrame.height,
       fontSize,
